@@ -111,23 +111,34 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 backing: .buffered,
                 defer: false
             )
+
+            NotificationCenter.default.addObserver(
+                self,
+                selector: #selector(preferencesWindowWillClose),
+                name: NSWindow.willCloseNotification,
+                object: preferencesWindow
+            )
         }
-        
+
         preferencesWindow!.center()
         preferencesWindow!.title = "Preferences"
         preferencesWindow!.contentView = NSHostingView(rootView: PreferencesView())
-        
+
         preferencesWindow!.isReleasedWhenClosed = false
         preferencesWindow!.titlebarAppearsTransparent = true
-        
+
         preferencesWindow!.contentMinSize = NSSize(width: 700, height: 500)
-        
-        preferencesWindow!.collectionBehavior = [.moveToActiveSpace, .fullScreenNone]
-        
+
+        preferencesWindow!.collectionBehavior = [.moveToActiveSpace, .fullScreenNone, .managed]
+
         NSApplication.shared.activate(ignoringOtherApps: true)
-        
+
         preferencesWindow!.makeKeyAndOrderFront(nil)
         preferencesWindow!.orderFrontRegardless()
+    }
+
+    @objc func preferencesWindowWillClose(_ notification: Notification) {
+        preferencesWindow?.collectionBehavior.remove(.managed)
     }
     
     func application(_ application: NSApplication, open urls: [URL]) {
