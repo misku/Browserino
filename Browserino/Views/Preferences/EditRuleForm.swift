@@ -63,7 +63,7 @@ struct RuleForm: View {
     var onDelete: () -> Void
 
     @State private var regex: String = ""
-    @State private var testUrls: String = "https://github.com/AlexStrNik/Browserino\nhttps://x.com/alexstrnik"
+    @AppStorage("ruleTestUrls") private var testUrls: String = "https://github.com/AlexStrNik/Browserino\nhttps://x.com/alexstrnik"
     @State private var url: URL?
     @State private var profile: String?
     @State private var portText: String = ""
