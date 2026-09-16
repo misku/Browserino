@@ -36,10 +36,12 @@ struct BrowsersTab: View {
     }
 
     /// Offer the grant only where it could actually help: a Chromium browser whose
-    /// profiles we have not been able to read yet.
+    /// profiles we have not been able to read yet. Profile rows have to qualify
+    /// too. When a grant stops working the browser is still shown as the profile
+    /// rows it was stored as, so requiring a plain row here would leave the user
+    /// with no way to ask again.
     private func needsProfileAccess(_ target: BrowserTarget) -> Bool {
-        target.profile == nil
-            && ChromiumProfileService.userDataDirectory(forAppAt: target.app) != nil
+        ChromiumProfileService.userDataDirectory(forAppAt: target.app) != nil
             && ChromiumProfileService.profiles(forAppAt: target.app) == nil
     }
 
