@@ -11,6 +11,7 @@ struct BrowsersTab: View {
     @AppStorage("browsers") private var browsers: [BrowserTarget] = []
     @AppStorage("hiddenBrowsers") private var hiddenBrowsers: [BrowserTarget] = []
     @AppStorage("privateArgs") private var privateArgs: [String: String] = [:]
+    @AppStorage("browserNames") private var names: [String: String] = [:]
 
     private func move(from source: IndexSet, to destination: Int) {
         browsers.move(fromOffsets: source, toOffset: destination)
@@ -20,6 +21,12 @@ struct BrowsersTab: View {
         return .init(
             get: { self.privateArgs[key, default: ""] },
             set: { self.privateArgs[key] = $0 })
+    }
+
+    private func name(for key: String) -> Binding<String> {
+        return .init(
+            get: { self.names[key, default: ""] },
+            set: { self.names[key] = $0.isEmpty ? nil : $0 })
     }
 
     /// Offer the grant only where it could actually help: a Chromium browser whose
@@ -48,10 +55,23 @@ struct BrowsersTab: View {
                             Spacer()
                                 .frame(width: 8)
 
-                            Text(browser.displayName)
+                            if let browserId = bundle.bundleIdentifier {
+                                TextField(
+                                    "Name",
+                                    text: name(for: browser.shortcutKey(bundleIdentifier: browserId)),
+                                    prompt: Text(browser.defaultName)
+                                )
+                                .textFieldStyle(.plain)
                                 .font(
                                     .system(size: 14)
                                 )
+                                .frame(maxWidth: 180)
+                            } else {
+                                Text(browser.displayName)
+                                    .font(
+                                        .system(size: 14)
+                                    )
+                            }
 
                             Spacer()
                                 .frame(width: 32)
@@ -119,7 +139,7 @@ struct BrowsersTab: View {
             }
 
             Text(
-                "Drag and drop to reorder. Press record to assign a shortcut. Click on eye to hide unwanted browsers from prompt. Browsers with several profiles appear once per profile — use Rescan in General after adding one."
+                "Drag and drop to reorder. Click a name to rename it; clear it to go back to the default. Press record to assign a shortcut. Click on eye to hide unwanted browsers from prompt. Browsers with several profiles appear once per profile: use Rescan in General after adding one."
             )
             .font(.subheadline)
             .foregroundStyle(.primary.opacity(0.5))

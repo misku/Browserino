@@ -72,8 +72,9 @@ extension BrowserTarget {
         return !profiles.contains { $0.directory == profile }
     }
 
-    /// "Chrome", or "Chrome — Work" for a profile.
-    var displayName: String {
+    /// "Chrome" for a browser, "Work" for one of its profiles: the icon already
+    /// says which browser a profile belongs to.
+    var defaultName: String {
         let browser = Bundle(url: app)?.appDisplayName ?? app.appDisplayName
 
         guard let profile else {
@@ -81,10 +82,26 @@ extension BrowserTarget {
         }
 
         if hasMissingProfile {
-            return "\(browser) — \(profile) (missing)"
+            return "\(browser): \(profile) (missing)"
         }
 
-        return "\(browser) — \(chromiumProfile?.name ?? profile)"
+        return chromiumProfile?.name ?? profile
+    }
+
+    /// The name the user typed in Preferences, or the default when they left it empty.
+    var displayName: String {
+        let names = [String: String](
+            rawValue: UserDefaults.standard.string(forKey: "browserNames") ?? ""
+        ) ?? [:]
+
+        if let bundleIdentifier = Bundle(url: app)?.bundleIdentifier,
+           let name = names[shortcutKey(bundleIdentifier: bundleIdentifier)]?
+            .trimmingCharacters(in: .whitespaces),
+           !name.isEmpty {
+            return name
+        }
+
+        return defaultName
     }
 
     var icon: NSImage {
