@@ -37,20 +37,6 @@ struct BrowserTarget: Codable, Hashable {
         )
     }
 
-    /// A profile-less target is written as a bare URL string, the shape earlier
-    /// builds read, so rolling back to one keeps the browser list.
-    func encode(to encoder: any Encoder) throws {
-        guard let profile else {
-            var container = encoder.singleValueContainer()
-            try container.encode(app)
-            return
-        }
-
-        var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(app, forKey: .app)
-        try container.encode(profile, forKey: .profile)
-    }
-
     /// Shortcuts are stored per target. Profile-less targets keep using the bare
     /// bundle identifier so shortcuts recorded before this feature still resolve.
     func shortcutKey(bundleIdentifier: String) -> String {

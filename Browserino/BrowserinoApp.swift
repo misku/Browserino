@@ -14,6 +14,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var preferencesWindow: NSWindow?
     
     @AppStorage("rules") private var rules: [Rule] = []
+    @AppStorage("browsers") private var browsers: [BrowserTarget] = []
     @AppStorage("showInMenuBar") private var showInMenuBar: Bool = true
     
     var statusMenu: NSMenu!
@@ -26,6 +27,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         
         if UserDefaults.standard.object(forKey: "browsers") == nil {
             openPreferences()
+        } else {
+            // Splits browsers into their profile rows, and carries their shortcuts
+            // over, before the first pop-up rather than on the first Preferences visit.
+            browsers = BrowserUtil.loadBrowsers(oldBrowsers: browsers)
         }
     }
 
