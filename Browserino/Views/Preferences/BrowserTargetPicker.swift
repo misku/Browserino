@@ -13,8 +13,6 @@ struct BrowserTargetPicker: View {
     @Binding var profile: String?
 
     @AppStorage("browsers") private var browsers: [BrowserTarget] = []
-    // Not read here: watching it redraws the names after a rename in Browsers.
-    @AppStorage("browserNames") private var names: [String: String] = [:]
     @State private var otherPresented = false
 
     private var selection: BrowserTarget? {

@@ -94,8 +94,6 @@ struct NewApp: View {
 
 struct AppItem: View {
     @Binding var app: App
-    // Not read here: watching it redraws the name after a rename in Browsers.
-    @AppStorage("browserNames") private var names: [String: String] = [:]
     @State private var editPresented = false
 
     var body: some View {

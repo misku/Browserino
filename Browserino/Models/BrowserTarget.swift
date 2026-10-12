@@ -110,7 +110,7 @@ extension BrowserTarget {
 
     /// Menus draw an image at its own size, so it has to be sized before use.
     var smallIcon: NSImage {
-        let image = icon
+        let image = icon.copy() as! NSImage
         image.size = NSSize(width: 16, height: 16)
 
         return image
