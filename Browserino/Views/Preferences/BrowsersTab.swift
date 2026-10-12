@@ -23,10 +23,16 @@ struct BrowsersTab: View {
             set: { self.privateArgs[key] = $0 })
     }
 
-    private func name(for key: String) -> Binding<String> {
+    /// The field holds the name in use, so an unrenamed row reads normally rather
+    /// than as a grey placeholder. Clearing it, or typing the default back, stores
+    /// nothing.
+    private func name(for browser: BrowserTarget, key: String) -> Binding<String> {
         return .init(
-            get: { self.names[key, default: ""] },
-            set: { self.names[key] = $0.isEmpty ? nil : $0 })
+            get: { self.names[key] ?? browser.defaultName },
+            set: {
+                let name = $0.trimmingCharacters(in: .whitespaces)
+                self.names[key] = name.isEmpty || name == browser.defaultName ? nil : name
+            })
     }
 
     /// Offer the grant only where it could actually help: a Chromium browser whose
@@ -58,7 +64,10 @@ struct BrowsersTab: View {
                             if let browserId = bundle.bundleIdentifier {
                                 TextField(
                                     "Name",
-                                    text: name(for: browser.shortcutKey(bundleIdentifier: browserId)),
+                                    text: name(
+                                        for: browser,
+                                        key: browser.shortcutKey(bundleIdentifier: browserId)
+                                    ),
                                     prompt: Text(browser.defaultName)
                                 )
                                 .textFieldStyle(.plain)

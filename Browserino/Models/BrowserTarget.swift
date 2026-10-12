@@ -98,7 +98,7 @@ extension BrowserTarget {
            let name = names[shortcutKey(bundleIdentifier: bundleIdentifier)]?
             .trimmingCharacters(in: .whitespaces),
            !name.isEmpty {
-            return name
+            return hasMissingProfile ? "\(name) (missing)" : name
         }
 
         return defaultName
@@ -106,5 +106,13 @@ extension BrowserTarget {
 
     var icon: NSImage {
         NSWorkspace.shared.icon(forFile: app.path)
+    }
+
+    /// Menus draw an image at its own size, so it has to be sized before use.
+    var smallIcon: NSImage {
+        let image = icon
+        image.size = NSSize(width: 16, height: 16)
+
+        return image
     }
 }

@@ -13,6 +13,7 @@ class BrowserUtil {
     @AppStorage("directories") private static var directories: [Directory] = []
     @AppStorage("privateArgs") private static var privateArgs: [String: String] = [:]
     @AppStorage("shortcuts") private static var shortcuts: [String: String] = [:]
+    @AppStorage("browserNames") private static var names: [String: String] = [:]
     @AppStorage("hiddenBrowsers") private static var hiddenBrowsers: [BrowserTarget] = []
 
     static func loadBrowsers(
@@ -77,6 +78,11 @@ class BrowserUtil {
             if let key = shortcuts[bundleIdentifier], shortcuts[profileKey] == nil {
                 shortcuts[profileKey] = key
                 shortcuts[bundleIdentifier] = nil
+            }
+
+            if let name = names[bundleIdentifier], names[profileKey] == nil {
+                names[profileKey] = name
+                names[bundleIdentifier] = nil
             }
 
             if let index = hiddenBrowsers.firstIndex(of: old) {

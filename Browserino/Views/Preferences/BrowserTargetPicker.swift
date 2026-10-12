@@ -13,6 +13,8 @@ struct BrowserTargetPicker: View {
     @Binding var profile: String?
 
     @AppStorage("browsers") private var browsers: [BrowserTarget] = []
+    // Not read here: watching it redraws the names after a rename in Browsers.
+    @AppStorage("browserNames") private var names: [String: String] = [:]
     @State private var otherPresented = false
 
     private var selection: BrowserTarget? {
@@ -26,7 +28,12 @@ struct BrowserTargetPicker: View {
                     app = target.app
                     profile = target.profile
                 } label: {
-                    Text(target.displayName)
+                    // Two browsers can share a profile name, so the icon tells them apart.
+                    Label {
+                        Text(target.displayName)
+                    } icon: {
+                        Image(nsImage: target.smallIcon)
+                    }
                 }
             }
 
