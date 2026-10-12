@@ -58,19 +58,14 @@ struct BrowsersTab: View {
 
                             if let browserId = bundle.bundleIdentifier {
                                 // Incognito is a property of the browser, not of one
-                                // profile, so it stays on the plain row and every
-                                // profile of that browser inherits it.
-                                if browser.profile == nil {
-                                    TextField(
-                                        "Private argument",
-                                        text: privateArg(for: browserId)
-                                    )
-                                    .font(
-                                        .system(size: 14).monospaced()
-                                    )
-                                } else {
-                                    Spacer()
-                                }
+                                // profile, so every profile row edits the same value.
+                                TextField(
+                                    "Private argument",
+                                    text: privateArg(for: browserId)
+                                )
+                                .font(
+                                    .system(size: 14).monospaced()
+                                )
 
                                 Spacer()
                                     .frame(width: 32)

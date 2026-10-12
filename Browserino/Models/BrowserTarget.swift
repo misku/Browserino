@@ -37,6 +37,20 @@ struct BrowserTarget: Codable, Hashable {
         )
     }
 
+    /// A profile-less target is written as a bare URL string, the shape earlier
+    /// builds read, so rolling back to one keeps the browser list.
+    func encode(to encoder: any Encoder) throws {
+        guard let profile else {
+            var container = encoder.singleValueContainer()
+            try container.encode(app)
+            return
+        }
+
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(app, forKey: .app)
+        try container.encode(profile, forKey: .profile)
+    }
+
     /// Shortcuts are stored per target. Profile-less targets keep using the bare
     /// bundle identifier so shortcuts recorded before this feature still resolve.
     func shortcutKey(bundleIdentifier: String) -> String {
@@ -60,9 +74,16 @@ extension BrowserTarget {
     }
 
     /// A profile the browser no longer knows about — the user switched machines,
-    /// restored a backup, or deleted it in the browser.
+    /// restored a backup, or deleted it in the browser. An unreadable profile list
+    /// is not evidence of absence, matching how links are opened.
     var hasMissingProfile: Bool {
-        profile != nil && chromiumProfile == nil
+        guard let profile,
+              let profiles = ChromiumProfileService.profiles(forAppAt: app)
+        else {
+            return false
+        }
+
+        return !profiles.contains { $0.directory == profile }
     }
 
     /// "Chrome", or "Chrome — Work" for a profile.
@@ -73,7 +94,11 @@ extension BrowserTarget {
             return browser
         }
 
-        return "\(browser) — \(chromiumProfile?.name ?? "\(profile) (missing)")"
+        if hasMissingProfile {
+            return "\(browser) — \(profile) (missing)"
+        }
+
+        return "\(browser) — \(chromiumProfile?.name ?? profile)"
     }
 
     var icon: NSImage {

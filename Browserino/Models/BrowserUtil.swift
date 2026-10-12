@@ -12,6 +12,8 @@ import SwiftUI
 class BrowserUtil {
     @AppStorage("directories") private static var directories: [Directory] = []
     @AppStorage("privateArgs") private static var privateArgs: [String: String] = [:]
+    @AppStorage("shortcuts") private static var shortcuts: [String: String] = [:]
+    @AppStorage("hiddenBrowsers") private static var hiddenBrowsers: [BrowserTarget] = []
 
     static func loadBrowsers(
         oldBrowsers: [BrowserTarget]
@@ -47,7 +49,43 @@ class BrowserUtil {
             targets(forAppAt: app, oldBrowsers: oldBrowsers)
         }
 
-        return merge(discovered: discovered, into: oldBrowsers)
+        let merged = merge(discovered: discovered, into: oldBrowsers)
+
+        carryOverSettings(from: oldBrowsers, to: merged)
+
+        return merged
+    }
+
+    /// When a browser's plain row is replaced by its profile rows, the plain row's
+    /// shortcut moves to the first profile and a hidden browser stays hidden.
+    /// Otherwise the upgrade silently drops the user's keys and unhides browsers.
+    private static func carryOverSettings(
+        from oldBrowsers: [BrowserTarget],
+        to merged: [BrowserTarget]
+    ) {
+        for old in oldBrowsers where old.profile == nil && !merged.contains(old) {
+            let replacements = merged.filter { $0.app == old.app && $0.profile != nil }
+
+            guard let first = replacements.first,
+                  let bundleIdentifier = Bundle(url: old.app)?.bundleIdentifier
+            else {
+                continue
+            }
+
+            let profileKey = first.shortcutKey(bundleIdentifier: bundleIdentifier)
+
+            if let key = shortcuts[bundleIdentifier], shortcuts[profileKey] == nil {
+                shortcuts[profileKey] = key
+                shortcuts[bundleIdentifier] = nil
+            }
+
+            if let index = hiddenBrowsers.firstIndex(of: old) {
+                hiddenBrowsers.remove(at: index)
+                hiddenBrowsers.append(
+                    contentsOf: replacements.filter { !hiddenBrowsers.contains($0) }
+                )
+            }
+        }
     }
 
     /// A browser with several profiles is represented by its profiles rather than
@@ -148,7 +186,9 @@ class BrowserUtil {
         }
 
         configuration.createsNewApplicationInstance = true
-        configuration.arguments = arguments + urls.map(\.absoluteString)
+        // Only absolute URLs reach the command line. One with a scheme starts with a
+        // letter, so a crafted link can never be read as a browser switch.
+        configuration.arguments = arguments + urls.filter { $0.scheme != nil }.map(\.absoluteString)
 
         NSWorkspace.shared.open(
             [],
