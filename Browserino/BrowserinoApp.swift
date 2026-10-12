@@ -8,11 +8,13 @@
 import SwiftUI
 import Foundation
 
+@MainActor
 class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var selectorWindow: BrowserinoWindow?
     private var preferencesWindow: NSWindow?
     
     @AppStorage("rules") private var rules: [Rule] = []
+    @AppStorage("browsers") private var browsers: [BrowserTarget] = []
     @AppStorage("showInMenuBar") private var showInMenuBar: Bool = true
     
     var statusMenu: NSMenu!
@@ -25,6 +27,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         
         if UserDefaults.standard.object(forKey: "browsers") == nil {
             openPreferences()
+        } else {
+            // Splits browsers into their profile rows, and carries their shortcuts
+            // over, before the first pop-up rather than on the first Preferences visit.
+            browsers = BrowserUtil.loadBrowsers(oldBrowsers: browsers)
         }
     }
 
@@ -59,10 +65,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
     }
     
-    override func observeValue(forKeyPath keyPath: String?, of object: Any?, change: [NSKeyValueChangeKey : Any]?, context: UnsafeMutableRawPointer?) {
+    override nonisolated func observeValue(forKeyPath keyPath: String?, of object: Any?, change: [NSKeyValueChangeKey : Any]?, context: UnsafeMutableRawPointer?) {
         if keyPath == "showInMenuBar" {
-            setupStatusBar()
-            NSApp.setActivationPolicy(.accessory)
+            // Another process writing our defaults delivers this off the main
+            // thread, so hop rather than assuming isolation.
+            Task { @MainActor in
+                setupStatusBar()
+                NSApp.setActivationPolicy(.accessory)
+            }
         }
     }
     
@@ -145,7 +155,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 if let regex, urlString.firstMatch(of: regex) != nil {
                     BrowserUtil.openURL(
                         processedUrls,
-                        app: rule.app,
+                        target: rule.target,
                         isIncognito: false
                     )
                     return
