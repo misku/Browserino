@@ -72,8 +72,9 @@ extension BrowserTarget {
         return !profiles.contains { $0.directory == profile }
     }
 
-    /// "Chrome", or "Chrome — Work" for a profile.
-    var displayName: String {
+    /// "Chrome" for a browser, "Work" for one of its profiles: the icon already
+    /// says which browser a profile belongs to.
+    var defaultName: String {
         let browser = Bundle(url: app)?.appDisplayName ?? app.appDisplayName
 
         guard let profile else {
@@ -81,13 +82,42 @@ extension BrowserTarget {
         }
 
         if hasMissingProfile {
-            return "\(browser) — \(profile) (missing)"
+            return "\(browser): \(profile) (missing)"
         }
 
-        return "\(browser) — \(chromiumProfile?.name ?? profile)"
+        return chromiumProfile?.name ?? profile
+    }
+
+    /// The name the user typed in Preferences, or the default when they left it empty.
+    var displayName: String {
+        displayName(
+            using: [String: String](
+                rawValue: UserDefaults.standard.string(forKey: "browserNames") ?? ""
+            ) ?? [:]
+        )
+    }
+
+    /// For views that hold the names in @AppStorage, so a rename redraws them.
+    func displayName(using names: [String: String]) -> String {
+        if let bundleIdentifier = Bundle(url: app)?.bundleIdentifier,
+           let name = names[shortcutKey(bundleIdentifier: bundleIdentifier)]?
+            .trimmingCharacters(in: .whitespaces),
+           !name.isEmpty {
+            return hasMissingProfile ? "\(name) (missing)" : name
+        }
+
+        return defaultName
     }
 
     var icon: NSImage {
         NSWorkspace.shared.icon(forFile: app.path)
+    }
+
+    /// Menus draw an image at its own size, so it has to be sized before use.
+    var smallIcon: NSImage {
+        let image = icon.copy() as! NSImage
+        image.size = NSSize(width: 16, height: 16)
+
+        return image
     }
 }

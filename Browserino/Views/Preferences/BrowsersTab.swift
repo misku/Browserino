@@ -11,6 +11,7 @@ struct BrowsersTab: View {
     @AppStorage("browsers") private var browsers: [BrowserTarget] = []
     @AppStorage("hiddenBrowsers") private var hiddenBrowsers: [BrowserTarget] = []
     @AppStorage("privateArgs") private var privateArgs: [String: String] = [:]
+    @AppStorage("browserNames") private var names: [String: String] = [:]
 
     private func move(from source: IndexSet, to destination: Int) {
         browsers.move(fromOffsets: source, toOffset: destination)
@@ -20,6 +21,18 @@ struct BrowsersTab: View {
         return .init(
             get: { self.privateArgs[key, default: ""] },
             set: { self.privateArgs[key] = $0 })
+    }
+
+    /// The field holds the name in use, so an unrenamed row reads normally rather
+    /// than as a grey placeholder. Clearing it, or typing the default back, stores
+    /// nothing.
+    private func name(for browser: BrowserTarget, key: String) -> Binding<String> {
+        return .init(
+            get: { self.names[key] ?? browser.defaultName },
+            set: {
+                let name = $0.trimmingCharacters(in: .whitespaces)
+                self.names[key] = name.isEmpty || name == browser.defaultName ? nil : name
+            })
     }
 
     /// Offer the grant only where it could actually help: a Chromium browser whose
@@ -48,10 +61,26 @@ struct BrowsersTab: View {
                             Spacer()
                                 .frame(width: 8)
 
-                            Text(browser.displayName)
+                            if let browserId = bundle.bundleIdentifier {
+                                TextField(
+                                    "Name",
+                                    text: name(
+                                        for: browser,
+                                        key: browser.shortcutKey(bundleIdentifier: browserId)
+                                    ),
+                                    prompt: Text(browser.defaultName)
+                                )
+                                .textFieldStyle(.plain)
                                 .font(
                                     .system(size: 14)
                                 )
+                                .frame(maxWidth: 180)
+                            } else {
+                                Text(browser.displayName)
+                                    .font(
+                                        .system(size: 14)
+                                    )
+                            }
 
                             Spacer()
                                 .frame(width: 32)
@@ -119,7 +148,7 @@ struct BrowsersTab: View {
             }
 
             Text(
-                "Drag and drop to reorder. Press record to assign a shortcut. Click on eye to hide unwanted browsers from prompt. Browsers with several profiles appear once per profile — use Rescan in General after adding one."
+                "Drag and drop to reorder. Click a name to rename it; clear it to go back to the default. Press record to assign a shortcut. Click on eye to hide unwanted browsers from prompt. Browsers with several profiles appear once per profile: use Rescan in General after adding one."
             )
             .font(.subheadline)
             .foregroundStyle(.primary.opacity(0.5))

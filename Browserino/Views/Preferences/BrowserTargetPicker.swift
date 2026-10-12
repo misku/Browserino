@@ -13,6 +13,7 @@ struct BrowserTargetPicker: View {
     @Binding var profile: String?
 
     @AppStorage("browsers") private var browsers: [BrowserTarget] = []
+    @AppStorage("browserNames") private var names: [String: String] = [:]
     @State private var otherPresented = false
 
     private var selection: BrowserTarget? {
@@ -26,7 +27,12 @@ struct BrowserTargetPicker: View {
                     app = target.app
                     profile = target.profile
                 } label: {
-                    Text(target.displayName)
+                    // Two browsers can share a profile name, so the icon tells them apart.
+                    Label {
+                        Text(target.displayName(using: names))
+                    } icon: {
+                        Image(nsImage: target.smallIcon)
+                    }
                 }
             }
 
@@ -46,7 +52,7 @@ struct BrowserTargetPicker: View {
                     Text(
                         Bundle(url: selection.app) == nil
                             ? "\(selection.app.appDisplayName) (not installed)"
-                            : selection.displayName
+                            : selection.displayName(using: names)
                     )
                 }
             } else {
