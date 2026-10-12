@@ -94,6 +94,7 @@ struct NewApp: View {
 
 struct AppItem: View {
     @Binding var app: App
+    @AppStorage("browserNames") private var names: [String: String] = [:]
     @State private var editPresented = false
 
     var body: some View {
@@ -119,7 +120,7 @@ struct AppItem: View {
 
             Text(bundle == nil
                  ? "\(app.app.appDisplayName) (not installed)"
-                 : app.target.displayName)
+                 : app.target.displayName(using: names))
                 .font(
                     .system(size: 14)
                 )

@@ -90,10 +90,15 @@ extension BrowserTarget {
 
     /// The name the user typed in Preferences, or the default when they left it empty.
     var displayName: String {
-        let names = [String: String](
-            rawValue: UserDefaults.standard.string(forKey: "browserNames") ?? ""
-        ) ?? [:]
+        displayName(
+            using: [String: String](
+                rawValue: UserDefaults.standard.string(forKey: "browserNames") ?? ""
+            ) ?? [:]
+        )
+    }
 
+    /// For views that hold the names in @AppStorage, so a rename redraws them.
+    func displayName(using names: [String: String]) -> String {
         if let bundleIdentifier = Bundle(url: app)?.bundleIdentifier,
            let name = names[shortcutKey(bundleIdentifier: bundleIdentifier)]?
             .trimmingCharacters(in: .whitespaces),

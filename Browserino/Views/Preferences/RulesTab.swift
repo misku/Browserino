@@ -41,6 +41,7 @@ struct AddRule: View {
 
 struct RuleItem: View {
     @Binding var rule: Rule
+    @AppStorage("browserNames") private var names: [String: String] = [:]
     @State private var editPresented = false
     
     var body: some View {
@@ -63,7 +64,7 @@ struct RuleItem: View {
             
             Text(bundle == nil
                  ? "\(rule.app.appDisplayName) (not installed)"
-                 : rule.target.displayName)
+                 : rule.target.displayName(using: names))
                 .font(
                     .system(size: 14)
                 )
