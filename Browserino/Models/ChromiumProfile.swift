@@ -33,6 +33,7 @@ enum ChromiumProfileService {
         "com.microsoft.edgemac": "Microsoft Edge",
         "com.operasoftware.Opera": "com.operasoftware.Opera",
         "org.chromium.Chromium": "Chromium",
+        "net.imput.helium": "net.imput.helium",
     ]
 
     private static var cache: [URL: (modified: Date, profiles: [ChromiumProfile])] = [:]
