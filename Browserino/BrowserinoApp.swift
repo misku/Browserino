@@ -20,6 +20,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     @AppStorage("catchallTargets") private var catchallTargets: [BrowserTarget] = []
     @AppStorage("catchallIncognito") private var catchallIncognito: Bool = false
     @AppStorage("showInMenuBar") private var showInMenuBar: Bool = true
+    @AppStorage("shortcuts") private var shortcuts: [String: String] = [:]
     
     var statusMenu: NSMenu!
     var statusBarItem: NSStatusItem!
@@ -28,6 +29,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         setupStatusBar()
         
         UserDefaults.standard.addObserver(self, forKeyPath: "showInMenuBar", options: [.new], context: nil)
+
+        // Earlier builds recorded Escape, Return and other keys the picker needs
+        // for itself. Such a row showed a blank shortcut and could steal the key.
+        let validShortcuts = shortcuts.filter { PickerShortcut.isValid($0.value) }
+        if validShortcuts.count != shortcuts.count {
+            shortcuts = validShortcuts
+        }
         
         if UserDefaults.standard.object(forKey: "browsers") == nil {
             openPreferences()

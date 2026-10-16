@@ -13,6 +13,12 @@ struct PromptItem: View {
     var shortcut: String?
     var action: () -> Void
 
+    /// A stored value that is not a letter or digit is ignored rather than bound,
+    /// so it can never take over Return, Escape or the arrow keys.
+    private var keyEquivalent: KeyEquivalent? {
+        PickerShortcut.keyEquivalent(for: shortcut)
+    }
+
     var body: some View {
         Button(action: action) {
             HStack {
@@ -23,7 +29,7 @@ struct PromptItem: View {
                 
                 Spacer()
                 
-                if let shortcut {
+                if let shortcut, keyEquivalent != nil {
                     Text(shortcut)
                         .font(.caption)
                         .frame(minWidth: 4)
@@ -43,15 +49,15 @@ struct PromptItem: View {
             }
             .padding(8)
         }
-        .if(shortcut != nil) {
+        .if(keyEquivalent != nil) {
             return $0.keyboardShortcut(
-                KeyEquivalent(shortcut!.lowercased().first!),
+                keyEquivalent!,
                 modifiers: [.shift]
             ).background {
                 Button(action: action) {}
                     .opacity(0)
                     .keyboardShortcut(
-                        KeyEquivalent(shortcut!.lowercased().first!),
+                        keyEquivalent!,
                         modifiers: []
                     )
             }
