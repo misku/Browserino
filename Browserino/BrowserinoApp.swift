@@ -15,6 +15,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     
     @AppStorage("rules") private var rules: [Rule] = []
     @AppStorage("browsers") private var browsers: [BrowserTarget] = []
+    @AppStorage("apps") private var apps: [App] = []
+    @AppStorage("apps_autoOpen") private var autoOpenApps: Bool = false
     @AppStorage("showInMenuBar") private var showInMenuBar: Bool = true
     
     var statusMenu: NSMenu!
@@ -161,6 +163,23 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                     )
                     return
                 }
+            }
+
+            // Rules win. Then an App the picker would list for this link opens
+            // directly, but only one bound to a host: an App with an empty host
+            // matches every link and stays a picker entry.
+            if autoOpenApps, let app = apps.first(where: { app in
+                !app.host.isEmpty
+                    && processedUrls.first!.matchesHost(app.host)
+                    && !browsers.contains(app.target)
+                    && Bundle(url: app.app) != nil
+            }) {
+                BrowserUtil.openURL(
+                    app.urlsToOpen(processedUrls),
+                    target: app.target,
+                    isIncognito: false
+                )
+                return
             }
         }
         

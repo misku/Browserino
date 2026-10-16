@@ -44,6 +44,7 @@ struct GeneralTab: View {
     @AppStorage("copy_alternativeShortcut") private var alternativeShortcut: Bool = false
     @AppStorage("showInMenuBar") private var showInMenuBar: Bool = true
     @AppStorage("apps_atTop") private var appsAtTop: Bool = true
+    @AppStorage("apps_autoOpen") private var autoOpenApps: Bool = false
     
     func defaultBrowser() -> String? {
         guard let browserUrl = NSWorkspace.shared.urlForApplication(toOpen: URL(string: "https:")!) else {
@@ -180,6 +181,12 @@ struct GeneralTab: View {
                 VStack(alignment: .leading) {
                     Toggle(isOn: $appsAtTop) {
                         Text("Show apps before browsers")
+                            .font(.callout)
+                            .opacity(0.5)
+                    }
+                    
+                    Toggle(isOn: $autoOpenApps) {
+                        Text("Open Apps with a host without asking")
                             .font(.callout)
                             .opacity(0.5)
                     }

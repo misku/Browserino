@@ -53,23 +53,8 @@ struct PromptView: View {
     }
 
     func openUrlsInApp(app: App) {
-        let urls =
-            if app.schemeOverride.isEmpty {
-                urls
-            } else {
-                urls.map {
-                    let url = NSURLComponents.init(
-                        url: $0,
-                        resolvingAgainstBaseURL: true
-                    )
-                    url!.scheme = app.schemeOverride
-
-                    return url!.url!
-                }
-            }
-
         BrowserUtil.openURL(
-            urls,
+            app.urlsToOpen(urls),
             target: app.target,
             isIncognito: false
         )

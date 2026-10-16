@@ -16,6 +16,23 @@ struct App: Codable, Hashable {
     var target: BrowserTarget {
         BrowserTarget(app: app, profile: profile)
     }
+
+    /// The links with this app's scheme override applied.
+    func urlsToOpen(_ urls: [URL]) -> [URL] {
+        if schemeOverride.isEmpty {
+            return urls
+        }
+
+        return urls.map {
+            let url = NSURLComponents.init(
+                url: $0,
+                resolvingAgainstBaseURL: true
+            )
+            url!.scheme = schemeOverride
+
+            return url!.url!
+        }
+    }
 }
 
 struct NewApp: View {
