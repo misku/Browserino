@@ -1,0 +1,66 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build (arm64)
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Show Xcode version
+        run: xcodebuild -version
+
+      - name: Validate property lists
+        run: plutil -lint Browserino/Info.plist Browserino/Browserino.entitlements
+
+      - name: Build unsigned release app
+        run: |
+          set -o pipefail
+          xcodebuild build \
+            -project Browserino.xcodeproj \
+            -target Browserino \
+            -configuration Release \
+            -sdk macosx \
+            -arch arm64 \
+            CONFIGURATION_BUILD_DIR="$RUNNER_TEMP/Build" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            2>&1 | tee "$RUNNER_TEMP/build.log"
+
+      # The raw log buries the first error under thousands of lines; annotations
+      # put it on the run summary and next to the offending line. awk drops
+      # repeats without sorting, so the first errors stay first.
+      - name: Report compiler errors
+        if: failure()
+        run: |
+          [ -f "$RUNNER_TEMP/build.log" ] || exit 0
+          grep -E '^/.+:[0-9]+:[0-9]+: error: ' "$RUNNER_TEMP/build.log" \
+            | awk '!seen[$0]++' \
+            | head -n 10 \
+            | while IFS= read -r line; do
+                line="${line#"$GITHUB_WORKSPACE/"}"
+                if [[ "$line" =~ ^(.+):([0-9]+):([0-9]+):\ error:\ (.*)$ ]]; then
+                  message="${BASH_REMATCH[4]//%/%25}"
+                  echo "::error file=${BASH_REMATCH[1]},line=${BASH_REMATCH[2]},col=${BASH_REMATCH[3]}::${message}"
+                fi
+              done
+
+      - name: Sign and verify app bundle
+        run: |
+          APP_PATH="$RUNNER_TEMP/Build/Browserino.app"
+          codesign --force --sign - "$APP_PATH"
+          codesign --verify --deep --strict "$APP_PATH"
+          lipo "$APP_PATH/Contents/MacOS/Browserino" -verify_arch arm64
