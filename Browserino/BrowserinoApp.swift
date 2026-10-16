@@ -129,7 +129,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
         preferencesWindow!.contentMinSize = NSSize(width: 700, height: 500)
 
-        preferencesWindow!.collectionBehavior = [.moveToActiveSpace, .fullScreenNone, .managed]
+        preferencesWindow!.collectionBehavior = [.moveToActiveSpace, .fullScreenNone, .managed, .participatesInCycle]
+
+        // A regular app shows in Cmd-Tab; switch back once Preferences closes.
+        NSApp.setActivationPolicy(.regular)
 
         NSApplication.shared.activate(ignoringOtherApps: true)
 
@@ -139,6 +142,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     @objc func preferencesWindowWillClose(_ notification: Notification) {
         preferencesWindow?.collectionBehavior.remove(.managed)
+        preferencesWindow?.collectionBehavior.remove(.participatesInCycle)
+
+        NSApp.setActivationPolicy(.accessory)
     }
     
     func application(_ application: NSApplication, open urls: [URL]) {
