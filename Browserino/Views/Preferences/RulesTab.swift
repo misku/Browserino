@@ -98,7 +98,11 @@ struct RuleItem: View {
 
 struct RulesTab: View {
     @AppStorage("rules") private var rules: [Rule] = []
-    
+
+    private func move(from source: IndexSet, to destination: Int) {
+        rules.move(fromOffsets: source, toOffset: destination)
+    }
+
     var body: some View {
         VStack (alignment: .leading) {
             List {
@@ -109,10 +113,11 @@ struct RulesTab: View {
                         rule: rule
                     )
                 }
+                .onMove(perform: move)
             }
             .scrollContentBackground(.hidden)
-            
-            Text("Type regex and choose app in which links will be opened without prompt")
+
+            Text("Drag to reorder. The first matching rule wins.")
                 .font(.subheadline)
                 .foregroundStyle(.primary.opacity(0.5))
                 .frame(maxWidth: .infinity)
