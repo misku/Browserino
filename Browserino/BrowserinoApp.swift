@@ -17,6 +17,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     @AppStorage("browsers") private var browsers: [BrowserTarget] = []
     @AppStorage("apps") private var apps: [App] = []
     @AppStorage("apps_autoOpen") private var autoOpenApps: Bool = false
+    @AppStorage("catchallTargets") private var catchallTargets: [BrowserTarget] = []
+    @AppStorage("catchallIncognito") private var catchallIncognito: Bool = false
     @AppStorage("showInMenuBar") private var showInMenuBar: Bool = true
     
     var statusMenu: NSMenu!
@@ -166,20 +168,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 }
             }
             
-            let urlString = processedUrls.first!.absoluteString
-
-            for rule in rules {
-                let regex = try? Regex(rule.regex).ignoresCase()
-                
-                if let regex, urlString.firstMatch(of: regex) != nil,
-                   rule.matchesPort(of: processedUrls.first!) {
-                    BrowserUtil.openURL(
-                        processedUrls,
-                        target: rule.target,
-                        isIncognito: rule.isIncognito
-                    )
-                    return
-                }
+            if let rule = rules.first(where: { $0.matches(processedUrls.first!) }) {
+                route(processedUrls, to: rule.targets, isIncognito: rule.isIncognito)
+                return
             }
 
             // Rules win. Then an App the picker would list for this link opens
@@ -198,8 +189,38 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 )
                 return
             }
+
+            // Whatever no rule or App took goes to Default catchall, which is
+            // the full picker until the user picks browsers for it.
+            route(processedUrls, to: catchallTargets, isIncognito: catchallIncognito)
+            return
         }
-        
+
+        showPicker(urls: processedUrls)
+    }
+
+    /// One installed browser opens the link directly and several show the
+    /// picker with only those. With none installed the link would otherwise
+    /// go nowhere, so the full picker shows instead.
+    private func route(_ urls: [URL], to targets: [BrowserTarget], isIncognito: Bool) {
+        let installed = targets.withoutDuplicates.filter { Bundle(url: $0.app) != nil }
+
+        switch installed.count {
+        case 0:
+            showPicker(urls: urls)
+        case 1:
+            BrowserUtil.openURL(urls, target: installed[0], isIncognito: isIncognito)
+        default:
+            showPicker(urls: urls, targets: installed, isIncognito: isIncognito)
+        }
+    }
+
+    /// `targets` limits the picker to those browsers, in that order.
+    private func showPicker(
+        urls: [URL],
+        targets: [BrowserTarget]? = nil,
+        isIncognito: Bool = false
+    ) {
         if selectorWindow == nil {
             selectorWindow = BrowserinoWindow()
         }
@@ -226,7 +247,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         
         selectorWindow!.contentView = NSHostingView(
             rootView: PromptView(
-                urls: processedUrls
+                urls: urls,
+                targets: targets,
+                isIncognito: isIncognito
             )
         )
         

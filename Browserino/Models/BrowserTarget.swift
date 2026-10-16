@@ -48,6 +48,14 @@ struct BrowserTarget: Codable, Hashable {
     }
 }
 
+extension Array where Element == BrowserTarget {
+    /// The same browser twice in a rule would only show twice in the picker.
+    var withoutDuplicates: [BrowserTarget] {
+        var seen = Set<BrowserTarget>()
+        return filter { seen.insert($0).inserted }
+    }
+}
+
 @MainActor
 extension BrowserTarget {
     var chromiumProfile: ChromiumProfile? {

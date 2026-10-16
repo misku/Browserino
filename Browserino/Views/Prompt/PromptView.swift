@@ -19,13 +19,24 @@ struct PromptView: View {
     @AppStorage("apps_atTop") private var appsAtTop: Bool = true
 
     let urls: [URL]
+    /// Set when a rule or Default catchall names several browsers: the picker
+    /// then lists exactly these, in this order, and no Apps.
+    var targets: [BrowserTarget]? = nil
+    /// The rule's private window setting, used by Return and by a click.
+    var isIncognito: Bool = false
 
     @State private var opacityAnimation = 0.0
     @State private var selected = 0
     @FocusState private var focused: Bool
 
+    // Return, the arrows and the shortcuts all index appsForUrls and
+    // visibleBrowsers, so narrowing both here keeps them in step with the rows.
     var appsForUrls: [App] {
-        urls.flatMap { url in
+        if targets != nil {
+            return []
+        }
+
+        return urls.flatMap { url in
             return apps.filter { app in
                 url.matchesHost(app.host)
             }
@@ -41,7 +52,11 @@ struct PromptView: View {
     }
 
     var visibleBrowsers: [BrowserTarget] {
-        browsers.filter {
+        if let targets {
+            return targets
+        }
+
+        return browsers.filter {
             !hiddenBrowsers.contains($0) && Bundle(url: $0.app) != nil
         }
     }
@@ -95,7 +110,7 @@ struct PromptView: View {
                                 BrowserUtil.openURL(
                                     urls,
                                     target: browser,
-                                    isIncognito: NSEvent.modifierFlags.contains(.shift)
+                                    isIncognito: isIncognito || NSEvent.modifierFlags.contains(.shift)
                                 )
                             }
                             .id(index + (appsAtTop ? appsForUrls.count : 0))
@@ -148,7 +163,7 @@ struct PromptView: View {
                                 BrowserUtil.openURL(
                                     urls,
                                     target: visibleBrowsers[selected - appsForUrls.count],
-                                    isIncognito: false
+                                    isIncognito: isIncognito
                                 )
                             }
                         } else {
@@ -156,7 +171,7 @@ struct PromptView: View {
                                 BrowserUtil.openURL(
                                     urls,
                                     target: visibleBrowsers[selected],
-                                    isIncognito: false
+                                    isIncognito: isIncognito
                                 )
                             } else {
                                 openUrlsInApp(app: appsForUrls[selected - visibleBrowsers.count])
