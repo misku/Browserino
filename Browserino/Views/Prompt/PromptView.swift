@@ -75,6 +75,21 @@ struct PromptView: View {
         )
     }
 
+    /// Return and Shift-Return act on the highlighted row. An empty list has no
+    /// such row, so they do nothing rather than index past the end.
+    private func openSelected(isIncognito: Bool) {
+        let apps = appsForUrls
+        let browsers = visibleBrowsers
+        let appIndex = selected - (appsAtTop ? 0 : browsers.count)
+        let browserIndex = selected - (appsAtTop ? apps.count : 0)
+
+        if apps.indices.contains(appIndex) {
+            openUrlsInApp(app: apps[appIndex])
+        } else if browsers.indices.contains(browserIndex) {
+            BrowserUtil.openURL(urls, target: browsers[browserIndex], isIncognito: isIncognito)
+        }
+    }
+
     var body: some View {
         VStack {
             ScrollViewReader { scrollViewProxy in
@@ -150,59 +165,19 @@ struct PromptView: View {
                         selected = max(0, selected - 1)
                         scrollViewProxy.scrollTo(selected, anchor: .center)
                     } else if command == .down {
-                        selected = min(visibleBrowsers.count + appsForUrls.count - 1, selected + 1)
+                        selected = max(0, min(visibleBrowsers.count + appsForUrls.count - 1, selected + 1))
                         scrollViewProxy.scrollTo(selected, anchor: .center)
                     }
                 }
                 .background {
                     Button(action: {
-                        if appsAtTop {
-                            if selected < appsForUrls.count {
-                                openUrlsInApp(app: appsForUrls[selected])
-                            } else {
-                                BrowserUtil.openURL(
-                                    urls,
-                                    target: visibleBrowsers[selected - appsForUrls.count],
-                                    isIncognito: isIncognito
-                                )
-                            }
-                        } else {
-                            if selected < visibleBrowsers.count {
-                                BrowserUtil.openURL(
-                                    urls,
-                                    target: visibleBrowsers[selected],
-                                    isIncognito: isIncognito
-                                )
-                            } else {
-                                openUrlsInApp(app: appsForUrls[selected - visibleBrowsers.count])
-                            }
-                        }
+                        openSelected(isIncognito: isIncognito)
                     }) {}
                     .opacity(0)
                     .keyboardShortcut(.defaultAction)
 
                     Button(action: {
-                        if appsAtTop {
-                            if selected < appsForUrls.count {
-                                openUrlsInApp(app: appsForUrls[selected])
-                            } else {
-                                BrowserUtil.openURL(
-                                    urls,
-                                    target: visibleBrowsers[selected - appsForUrls.count],
-                                    isIncognito: true
-                                )
-                            }
-                        } else {
-                            if selected < visibleBrowsers.count {
-                                BrowserUtil.openURL(
-                                    urls,
-                                    target: visibleBrowsers[selected],
-                                    isIncognito: true
-                                )
-                            } else {
-                                openUrlsInApp(app: appsForUrls[selected - visibleBrowsers.count])
-                            }
-                        }
+                        openSelected(isIncognito: true)
                     }) {}
                     .opacity(0)
                     .keyboardShortcut(.return, modifiers: [.shift])

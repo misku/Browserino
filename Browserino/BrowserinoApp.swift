@@ -15,6 +15,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     
     @AppStorage("rules") private var rules: [Rule] = []
     @AppStorage("browsers") private var browsers: [BrowserTarget] = []
+    @AppStorage("hiddenBrowsers") private var hiddenBrowsers: [BrowserTarget] = []
     @AppStorage("apps") private var apps: [App] = []
     @AppStorage("apps_autoOpen") private var autoOpenApps: Bool = false
     @AppStorage("catchallTargets") private var catchallTargets: [BrowserTarget] = []
@@ -229,6 +230,27 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         targets: [BrowserTarget]? = nil,
         isIncognito: Bool = false
     ) {
+        // A picker with no rows can only be dismissed. General's Reset empties
+        // the browser list until the next scan, so scan first, and send the
+        // user to Settings if there is still nothing to offer.
+        if targets == nil {
+            if browsers.isEmpty {
+                browsers = BrowserUtil.loadBrowsers(oldBrowsers: [])
+            }
+
+            let hasBrowser = browsers.contains {
+                !hiddenBrowsers.contains($0) && Bundle(url: $0.app) != nil
+            }
+            let hasApp = apps.contains { app in
+                urls.contains { $0.matchesHost(app.host) } && Bundle(url: app.app) != nil
+            }
+
+            guard hasBrowser || hasApp else {
+                openPreferences()
+                return
+            }
+        }
+
         if selectorWindow == nil {
             selectorWindow = BrowserinoWindow()
         }
