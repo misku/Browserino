@@ -58,7 +58,13 @@ struct RuleItem: View {
                     .foregroundStyle(.primary)
             }
             .buttonStyle(.plain)
-            
+
+            if let port = rule.port {
+                Text(":\(port)")
+                    .font(.system(size: 12, design: .monospaced))
+                    .foregroundStyle(.secondary)
+            }
+
             Spacer()
             
             
@@ -71,7 +77,14 @@ struct RuleItem: View {
                 .foregroundStyle(
                     bundle == nil || rule.target.hasMissingProfile ? .secondary : .primary
                 )
-            
+
+            if rule.isIncognito {
+                Image(systemName: "eyeglasses")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                    .help("Opens in a private window")
+            }
+
             
             Spacer()
                 .frame(width: 8)

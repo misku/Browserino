@@ -152,11 +152,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             for rule in rules {
                 let regex = try? Regex(rule.regex).ignoresCase()
                 
-                if let regex, urlString.firstMatch(of: regex) != nil {
+                if let regex, urlString.firstMatch(of: regex) != nil,
+                   rule.matchesPort(of: processedUrls.first!) {
                     BrowserUtil.openURL(
                         processedUrls,
                         target: rule.target,
-                        isIncognito: false
+                        isIncognito: rule.isIncognito
                     )
                     return
                 }

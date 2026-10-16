@@ -66,6 +66,21 @@ struct RuleForm: View {
     @State private var testUrls: String = "https://github.com/AlexStrNik/Browserino\nhttps://x.com/alexstrnik"
     @State private var url: URL?
     @State private var profile: String?
+    @State private var portText: String = ""
+    @State private var isIncognito: Bool = false
+    
+    /// nil while the field is empty or not a valid port.
+    private var parsedPort: Int? {
+        let trimmed = portText.trimmingCharacters(in: .whitespaces)
+        guard let value = Int(trimmed), (1...65535).contains(value) else {
+            return nil
+        }
+        return value
+    }
+    
+    private var portIsValid: Bool {
+        portText.trimmingCharacters(in: .whitespaces).isEmpty || parsedPort != nil
+    }
     
     private var compiledRegex: Regex<AnyRegexOutput>? {
         return try? Regex(regex).ignoresCase()
@@ -118,6 +133,18 @@ struct RuleForm: View {
                 BrowserTargetPicker(app: $url, profile: $profile)
             }
             
+            TextField("Port:", text: $portText, prompt: Text("Any"))
+                .font(
+                    .system(size: 14)
+                )
+                .help("Leave empty to match any port. Links without a port count as 80 for http and 443 for https.")
+            
+            Toggle("Private window", isOn: $isIncognito)
+                .font(
+                    .system(size: 14)
+                )
+                .help("Opens the link with the browser's private argument from the Browsers tab.")
+            
             Spacer()
                 .frame(height: 32)
             
@@ -143,13 +170,15 @@ struct RuleForm: View {
                         Rule(
                             regex: regex,
                             app: url,
-                            profile: profile
+                            profile: profile,
+                            port: parsedPort,
+                            isIncognito: isIncognito
                         )
                     )
                 }) {
                     Text("Save")
                 }
-                .disabled(compiledRegex == nil || url == nil)
+                .disabled(compiledRegex == nil || url == nil || !portIsValid)
             }
             .frame(maxWidth: .infinity, alignment: .trailing)
         }
@@ -159,6 +188,8 @@ struct RuleForm: View {
             regex = rule?.regex ?? ""
             url = rule?.app
             profile = rule?.profile
+            portText = rule?.port.map(String.init) ?? ""
+            isIncognito = rule?.isIncognito ?? false
         }
     }
 }
