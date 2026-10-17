@@ -12,6 +12,7 @@ struct PromptView: View {
     @AppStorage("browsers") private var browsers: [BrowserTarget] = []
     @AppStorage("hiddenBrowsers") private var hiddenBrowsers: [BrowserTarget] = []
     @AppStorage("apps") private var apps: [App] = []
+    @AppStorage("browserNames") private var names: [String: String] = [:]
     @AppStorage("shortcuts") private var shortcuts: [String: String] = [:]
 
     @AppStorage("copy_closeAfterCopy") private var closeAfterCopy: Bool = false
@@ -99,6 +100,7 @@ struct PromptView: View {
         // per redraw keeps a long list responsive while arrowing through it.
         let appList = appsForUrls
         let browserList = visibleBrowsers
+        let nameMap = names
 
         VStack(spacing: 8) {
             ScrollViewReader { scrollViewProxy in
@@ -108,7 +110,7 @@ struct PromptView: View {
                             ForEach(Array(appList.enumerated()), id: \.offset) { index, app in
                                 PromptItem(
                                     target: app.target,
-                                    title: app.target.displayName,
+                                    title: app.target.displayName(using: nameMap),
                                     shortcut: shortcut(for: app.target)
                                 ) {
                                     openUrlsInApp(app: app)
@@ -128,7 +130,7 @@ struct PromptView: View {
                             index, browser in
                             PromptItem(
                                 target: browser,
-                                title: browser.displayName,
+                                title: browser.displayName(using: nameMap),
                                 shortcut: shortcut(for: browser)
                             ) {
                                 BrowserUtil.openURL(
@@ -151,7 +153,7 @@ struct PromptView: View {
                             ForEach(Array(appList.enumerated()), id: \.offset) { index, app in
                                 PromptItem(
                                     target: app.target,
-                                    title: app.target.displayName,
+                                    title: app.target.displayName(using: nameMap),
                                     shortcut: shortcut(for: app.target)
                                 ) {
                                     openUrlsInApp(app: app)

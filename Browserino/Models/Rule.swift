@@ -69,6 +69,13 @@ struct Rule: Hashable, Codable, Identifiable {
             return nil
         }
 
+        // The rule sheet compiles every pattern typed on the way to the real
+        // one; a bound keeps those from piling up.
+        if compiled.count + invalid.count > 256 {
+            compiled.removeAll()
+            invalid.removeAll()
+        }
+
         guard let regex = try? Regex(pattern).ignoresCase() else {
             invalid.insert(pattern)
             return nil
@@ -119,9 +126,9 @@ extension Rule {
         case profile
     }
 
-    // Rules saved before port and isIncognito existed lack both keys, rules
-    // saved before targets existed hold a single app and profile instead, and
-    // Array+RawRepresentable turns one failed element into an empty list.
+    // Rules saved before port and isIncognito existed lack both keys, and
+    // rules saved before targets existed hold a single app and profile instead.
+    // A rule that fails here is dropped by Array+RawRepresentable.
     // Declared in an extension so the memberwise init stays.
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
@@ -155,11 +162,14 @@ extension Rule {
         try container.encodeIfPresent(port, forKey: .port)
         try container.encode(isIncognito, forKey: .isIncognito)
 
-        if let legacyTarget = targets.first ?? Rule.firstVisibleBrowser() {
-            var legacy = encoder.container(keyedBy: LegacyCodingKeys.self)
-            try legacy.encode(legacyTarget.app, forKey: .app)
-            try legacy.encodeIfPresent(legacyTarget.profile, forKey: .profile)
-        }
+        // Safari as the last resort, because a rule without an app is one an
+        // older build can't read at all.
+        let legacyTarget = targets.first
+            ?? Rule.firstVisibleBrowser()
+            ?? BrowserTarget(app: URL(fileURLWithPath: "/Applications/Safari.app"))
+        var legacy = encoder.container(keyedBy: LegacyCodingKeys.self)
+        try legacy.encode(legacyTarget.app, forKey: .app)
+        try legacy.encodeIfPresent(legacyTarget.profile, forKey: .profile)
     }
 
     /// An older build has no picker state; the closest it can do is the first

@@ -49,6 +49,15 @@ final class HoverBubble {
         panel?.orderOut(nil)
     }
 
+    /// For when the view under the pointer goes away without reporting it:
+    /// the window closes or another pane replaces it.
+    func hideAll() {
+        pending?.cancel()
+        pending = nil
+        owner = nil
+        panel?.orderOut(nil)
+    }
+
     /// Below the pointer, clear of the cursor image; above it when the screen
     /// ends first.
     private func present(_ bubble: AnyView, near point: NSPoint) {

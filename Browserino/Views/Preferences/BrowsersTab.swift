@@ -30,6 +30,9 @@ private struct BrowserRow: View {
     @Binding var privateArg: String
     let toggleHidden: () -> Void
     let remove: () -> Void
+    /// Reordering for VoiceOver, which can't drag the handle.
+    let moveUp: (() -> Void)?
+    let moveDown: (() -> Void)?
 
     @State private var nameHovered = false
     @FocusState private var nameFocused: Bool
@@ -125,6 +128,8 @@ private struct BrowserRow: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
+        .accessibilityAction(named: "Move Up") { moveUp?() }
+        .accessibilityAction(named: "Move Down") { moveDown?() }
     }
 }
 
@@ -135,6 +140,7 @@ struct BrowsersTab: View {
     @AppStorage("browserNames") private var names: [String: String] = [:]
 
     @State private var locationsPresented = false
+    @State private var hasScanned = false
 
     private func privateArg(for key: String) -> Binding<String> {
         return .init(
@@ -144,13 +150,14 @@ struct BrowsersTab: View {
 
     /// The field holds the name in use, so an unrenamed row reads normally rather
     /// than as a grey placeholder. Clearing it, or typing the default back, stores
-    /// nothing.
+    /// nothing. The text is stored as typed, so a space between two words
+    /// survives until the second word arrives; displayName trims it on use.
     private func name(for browser: BrowserTarget, key: String) -> Binding<String> {
         return .init(
             get: { self.names[key] ?? browser.defaultName },
             set: {
                 let name = $0.trimmingCharacters(in: .whitespaces)
-                self.names[key] = name.isEmpty || name == browser.defaultName ? nil : name
+                self.names[key] = name.isEmpty || name == browser.defaultName ? nil : $0
             })
     }
 
@@ -201,7 +208,9 @@ struct BrowsersTab: View {
             remove: {
                 browsers.removeAll { $0 == browser }
                 hiddenBrowsers.removeAll { $0 == browser }
-            }
+            },
+            moveUp: index > 0 ? { browsers.move(from: index, to: index - 1) } : nil,
+            moveDown: index < browsers.count - 1 ? { browsers.move(from: index, to: index + 1) } : nil
         )
     }
 
@@ -291,10 +300,14 @@ struct BrowsersTab: View {
         }
         .padding(20)
         .onAppear {
-            // Safe to run every time: the merge keeps the user's order and is
+            // Once per Settings window: the merge keeps the user's order and is
             // idempotent, so this picks up profiles added since the last visit
-            // without waiting for an explicit Rescan.
-            rescan()
+            // without waiting for an explicit Rescan, but switching tabs
+            // doesn't repeat the scan.
+            if !hasScanned {
+                hasScanned = true
+                rescan()
+            }
         }
         .sheet(isPresented: $locationsPresented) {
             SearchLocationsSheet(isPresented: $locationsPresented, onChange: rescan)

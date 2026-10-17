@@ -20,6 +20,7 @@ struct AppForm: View {
     @State private var profile: String?
     @State private var schemeOverride: String = ""
     @State private var confirmDelete = false
+    @State private var isLoaded = false
 
     /// "" for every link, nil while the text is not a host.
     private var normalizedHost: String? {
@@ -118,7 +119,9 @@ struct AppForm: View {
             .padding(.top, 4)
         }
         .padding(20)
-        .frame(width: 500, height: 620)
+        // Fits the smallest Settings window; the browser list takes up the
+        // difference.
+        .frame(width: 500, height: 480)
         .confirmationDialog(
             "Delete this app?",
             isPresented: $confirmDelete
@@ -130,6 +133,13 @@ struct AppForm: View {
             Text("Links to \(host.isEmpty ? "any host" : host) will no longer offer it.")
         }
         .onAppear {
+            // Once: appear can fire again while the sheet is presented, and
+            // must not throw away what the user typed.
+            guard !isLoaded else {
+                return
+            }
+
+            isLoaded = true
             host = original?.host ?? ""
             appURL = original?.app
             profile = original?.profile

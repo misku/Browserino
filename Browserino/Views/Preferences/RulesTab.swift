@@ -169,7 +169,7 @@ private struct BrowserCheckbox: View {
         .help(help)
         .accessibilityLabel(name)
         .accessibilityValue(isOn ? "Checked" : "Unchecked")
-        .accessibilityAddTraits(.isButton)
+        .accessibilityAddTraits(.isToggle)
     }
 }
 
@@ -178,6 +178,8 @@ private struct BrowserCheckbox: View {
 /// the picker), then anything the rule holds that the list doesn't.
 private struct BrowserChooser: View {
     let heading: String
+    /// Why the last checked box can't be unchecked, worded for its row.
+    let lastOneHelp: String
     let browsers: [BrowserTarget]
     let hidden: [BrowserTarget]
     let names: [String: String]
@@ -216,7 +218,7 @@ private struct BrowserChooser: View {
             // Something that isn't there can only be unchecked.
             isEnabled: !isOnlyOne && (isOn || (isInstalled && number != nil)),
             help: isOnlyOne
-                ? "A rule needs at least one browser. Use Reset to show the picker instead."
+                ? lastOneHelp
                 : "\(number.map(String.init) ?? "?") · \(name)\(isHidden ? ", hidden from the picker" : "")",
             action: { toggle(target) }
         )
@@ -402,6 +404,70 @@ private struct RuleRow: View {
     }
 }
 
+/// What the rows read from the Browsers tab, decoded once per redraw:
+/// @AppStorage decodes its JSON on every read, and each row asks for every
+/// target's number and name several times.
+private struct BrowserLookup {
+    let browsers: [BrowserTarget]
+    let hidden: [BrowserTarget]
+    let names: [String: String]
+    private let positions: [BrowserTarget: Int]
+
+    init(browsers: [BrowserTarget], hidden: [BrowserTarget], names: [String: String]) {
+        self.browsers = browsers
+        self.hidden = hidden
+        self.names = names
+        positions = Dictionary(
+            browsers.enumerated().map { ($0.element, $0.offset + 1) },
+            uniquingKeysWith: { first, _ in first }
+        )
+    }
+
+    func number(of target: BrowserTarget) -> Int? {
+        positions[target]
+    }
+
+    @MainActor
+    func name(of target: BrowserTarget) -> String {
+        guard Bundle(url: target.app) != nil else {
+            return "\(target.app.appDisplayName) (not installed)"
+        }
+
+        let name = target.displayName(using: names)
+
+        return positions[target] != nil ? name : "\(name) (not in Browsers list)"
+    }
+
+    @MainActor
+    func bubble(for targets: [BrowserTarget], pickerText: String) -> String {
+        guard !targets.isEmpty else {
+            return pickerText
+        }
+
+        return targets
+            .map { "\(number(of: $0).map(String.init) ?? "?")  \(name(of: $0))" }
+            .joined(separator: "\n")
+    }
+
+    @MainActor
+    func privateHelp(for targets: [BrowserTarget], isOn: Bool, subject: String) -> String {
+        let summary = isOn
+            ? "\(subject) open in a private window. Click to turn it off."
+            : "Click to open \(subject.lowercased()) in a private window."
+
+        let unsupported = targets
+            .filter { Bundle(url: $0.app) != nil && BrowserUtil.privateArgument(for: $0) == nil }
+            .map { $0.displayName(using: names) }
+
+        guard isOn, !unsupported.isEmpty else {
+            return summary
+        }
+
+        return summary + "\n" + unsupported.joined(separator: ", ")
+            + " can't be asked for a private window and opens normally."
+    }
+}
+
 struct RulesTab: View {
     @AppStorage("rules") private var rules: [Rule] = []
     @AppStorage("browsers") private var browsers: [BrowserTarget] = []
@@ -422,47 +488,6 @@ struct RulesTab: View {
     /// extra 38pt of width shows one more.
     private var iconCap: Int {
         6 + max(0, Int((width - 660) / (TargetIcons.slot + TargetIcons.gap)))
-    }
-
-    private func number(of target: BrowserTarget) -> Int? {
-        browsers.firstIndex(of: target).map { $0 + 1 }
-    }
-
-    private func name(of target: BrowserTarget) -> String {
-        guard Bundle(url: target.app) != nil else {
-            return "\(target.app.appDisplayName) (not installed)"
-        }
-
-        let name = target.displayName(using: names)
-
-        return browsers.contains(target) ? name : "\(name) (not in Browsers list)"
-    }
-
-    private func bubble(for targets: [BrowserTarget]) -> String {
-        guard !targets.isEmpty else {
-            return "Shows the picker with all browsers, as if no rule matched."
-        }
-
-        return targets
-            .map { "\(number(of: $0).map(String.init) ?? "?")  \(name(of: $0))" }
-            .joined(separator: "\n")
-    }
-
-    private func privateHelp(for targets: [BrowserTarget], isOn: Bool, subject: String) -> String {
-        let summary = isOn
-            ? "\(subject) open in a private window. Click to turn it off."
-            : "Click to open \(subject.lowercased()) in a private window."
-
-        let unsupported = targets
-            .filter { Bundle(url: $0.app) != nil && BrowserUtil.privateArgument(for: $0) == nil }
-            .map { $0.displayName(using: names) }
-
-        guard isOn, !unsupported.isEmpty else {
-            return summary
-        }
-
-        return summary + "\n" + unsupported.joined(separator: ", ")
-            + " can't be asked for a private window and opens normally."
     }
 
     private func update(_ id: UUID, _ change: (inout Rule) -> Void) {
@@ -496,7 +521,14 @@ struct RulesTab: View {
         }
     }
 
-    private func ruleRow(_ rule: Rule, index: Int, handle: ReorderHandle, isUnreachable: Bool) -> some View {
+    private func ruleRow(
+        _ rule: Rule,
+        index: Int,
+        count: Int,
+        handle: ReorderHandle,
+        isUnreachable: Bool,
+        lookup: BrowserLookup
+    ) -> some View {
         RuleRow(
             handle: handle.addingMenu([
                 .action("Edit Rule…") { editing = rule },
@@ -509,11 +541,14 @@ struct RulesTab: View {
             port: rule.port,
             targets: rule.targets,
             iconCap: iconCap,
-            number: number(of:),
-            name: name(of:),
-            bubble: bubble(for: rule.targets),
+            number: lookup.number(of:),
+            name: lookup.name(of:),
+            bubble: lookup.bubble(
+                for: rule.targets,
+                pickerText: "Shows the picker with all browsers, as if no rule matched."
+            ),
             isIncognito: rule.isIncognito,
-            privateHelp: privateHelp(for: rule.targets, isOn: rule.isIncognito, subject: "Matching links"),
+            privateHelp: lookup.privateHelp(for: rule.targets, isOn: rule.isIncognito, subject: "Matching links"),
             toggleIncognito: { update(rule.id) { $0.isIncognito.toggle() } },
             isExpanded: expanded == .rule(rule.id),
             toggleExpanded: { toggle(.rule(rule.id)) },
@@ -523,19 +558,20 @@ struct RulesTab: View {
                 : nil,
             chooser: BrowserChooser(
                 heading: "Open matching links in",
-                browsers: browsers,
-                hidden: hiddenBrowsers,
-                names: names,
+                lastOneHelp: "A rule needs at least one browser. Use Reset to show the picker instead.",
+                browsers: lookup.browsers,
+                hidden: lookup.hidden,
+                names: lookup.names,
                 targets: rule.targets,
                 setTargets: { setTargets($0, for: .rule(rule.id)) },
                 chooseOtherApp: { choosingOtherAppFor = .rule(rule.id) }
             ),
             moveUp: index > 0 ? { move(from: index, to: index - 1) } : nil,
-            moveDown: index < rules.count - 1 ? { move(from: index, to: index + 1) } : nil
+            moveDown: index < count - 1 ? { move(from: index, to: index + 1) } : nil
         )
     }
 
-    private var allOtherLinksRow: some View {
+    private func allOtherLinksRow(lookup: BrowserLookup, isUnreachable: Bool) -> some View {
         RuleRow(
             handle: nil,
             onEdit: nil,
@@ -544,30 +580,31 @@ struct RulesTab: View {
             port: nil,
             targets: catchallTargets,
             iconCap: iconCap,
-            number: number(of:),
-            name: name(of:),
-            bubble: catchallTargets.isEmpty
-                ? "Shows the picker with all browsers."
-                : bubble(for: catchallTargets),
+            number: lookup.number(of:),
+            name: lookup.name(of:),
+            bubble: lookup.bubble(for: catchallTargets, pickerText: "Shows the picker with all browsers."),
             isIncognito: catchallIncognito,
-            privateHelp: privateHelp(for: catchallTargets, isOn: catchallIncognito, subject: "Other links"),
+            privateHelp: lookup.privateHelp(for: catchallTargets, isOn: catchallIncognito, subject: "Other links"),
             toggleIncognito: { catchallIncognito.toggle() },
             isExpanded: expanded == .allOtherLinks,
             toggleExpanded: { toggle(.allOtherLinks) },
             reset: { pendingReset = .allOtherLinks },
-            warning: rules.contains { $0.matchesEveryLink }
-                ? "Never used: a rule above matches every link."
-                : nil,
+            warning: isUnreachable ? "Never used: a rule above matches every link." : nil,
             chooser: BrowserChooser(
                 heading: "Open other links in",
-                browsers: browsers,
-                hidden: hiddenBrowsers,
-                names: names,
+                lastOneHelp: "Keep at least one browser here, or use Reset to show the picker for all other links.",
+                browsers: lookup.browsers,
+                hidden: lookup.hidden,
+                names: lookup.names,
                 targets: catchallTargets,
                 setTargets: { setTargets($0, for: .allOtherLinks) },
                 chooseOtherApp: { choosingOtherAppFor = .allOtherLinks }
             )
         )
+    }
+
+    private func browserCount(_ count: Int) -> String {
+        count == 1 ? "1 browser" : "\(count) browsers"
     }
 
     private var resetTitle: String {
@@ -579,10 +616,10 @@ struct RulesTab: View {
     private var resetMessage: String {
         switch pendingReset {
         case .allOtherLinks:
-            return "Links no rule matches will show the picker with all browsers. Your choice of \(catchallTargets.count) will be cleared."
+            return "Links no rule matches will show the picker with all browsers. Your choice of \(browserCount(catchallTargets.count)) will be cleared."
         case .rule(let id):
             let rule = rules.first { $0.id == id }
-            return "Links matching \(rule?.regex ?? "this rule") will show the picker with all browsers, as if no rule existed. Your choice of \(rule?.targets.count ?? 0) will be cleared."
+            return "Links matching \(rule?.regex ?? "this rule") will show the picker with all browsers, as if no rule existed. Your choice of \(browserCount(rule?.targets.count ?? 0)) will be cleared."
         case nil:
             return ""
         }
@@ -602,21 +639,23 @@ struct RulesTab: View {
     }
 
     var body: some View {
+        let allRules = rules
+        let lookup = BrowserLookup(browsers: browsers, hidden: hiddenBrowsers, names: names)
         // Rules after the first one that takes every link never run.
-        let firstMatchingEveryLink = rules.firstIndex { $0.matchesEveryLink }
+        let firstMatchingEveryLink = allRules.firstIndex { $0.matchesEveryLink }
 
         VStack(alignment: .leading, spacing: 12) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     SettingsCard {
-                        if rules.isEmpty {
+                        if allRules.isEmpty {
                             Text("No rules yet. Click + to send matching links to chosen browsers.")
                                 .foregroundStyle(.secondary)
                                 .frame(maxWidth: .infinity)
                                 .padding(16)
                         } else {
                             ReorderableStack(
-                                items: rules,
+                                items: allRules,
                                 id: { $0.id },
                                 onDragStarted: { expanded = nil },
                                 move: { from, to in rules.move(from: from, to: to) }
@@ -629,8 +668,10 @@ struct RulesTab: View {
                                     ruleRow(
                                         rule,
                                         index: index,
+                                        count: allRules.count,
                                         handle: handle,
-                                        isUnreachable: firstMatchingEveryLink.map { index > $0 } ?? false
+                                        isUnreachable: firstMatchingEveryLink.map { index > $0 } ?? false,
+                                        lookup: lookup
                                     )
                                 }
                             }
@@ -638,13 +679,13 @@ struct RulesTab: View {
                     }
 
                     SettingsCard {
-                        allOtherLinksRow
+                        allOtherLinksRow(lookup: lookup, isUnreachable: firstMatchingEveryLink != nil)
                     }
                 }
             }
             .scrollEdgeEffectDisabledCompat()
 
-            ListBottomBar(hint: "Drag to reorder. The first matching rule wins, and All Other Links takes the rest.") {
+            ListBottomBar(hint: "Drag a rule by its handle to reorder. The first matching rule wins, and All Other Links takes the rest.") {
                 IconButton(systemImage: "plus", help: "Add a rule (Command-N)") {
                     addPresented = true
                 }
@@ -665,6 +706,7 @@ struct RulesTab: View {
                 addPresented = true
             }
             .keyboardShortcut("n")
+            .frame(width: 0, height: 0)
             .opacity(0)
             .accessibilityHidden(true)
         }

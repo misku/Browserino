@@ -108,7 +108,10 @@ struct IconButton: View {
         .buttonStyle(IconButtonStyle(isOn: isOn))
         .help(help)
         .accessibilityLabel(label ?? help)
-        .accessibilityValue(isOn.map { $0 ? "On" : "Off" } ?? "")
+        .if(isOn != nil) {
+            $0.accessibilityValue(isOn == true ? "On" : "Off")
+                .accessibilityAddTraits(.isToggle)
+        }
     }
 }
 
@@ -234,6 +237,12 @@ private struct HandleArea: NSViewRepresentable {
         }
 
         override func mouseUp(with event: NSEvent) {
+            finishDrag(commit: true)
+        }
+
+        /// Puts the cursor and the window's cursor rects back. Also run when
+        /// the view leaves its window mid-drag, where no mouseUp will come.
+        private func finishDrag(commit: Bool) {
             guard start != nil else {
                 return
             }
@@ -245,8 +254,18 @@ private struct HandleArea: NSViewRepresentable {
 
             if isDragging {
                 isDragging = false
-                onEnded()
+                if commit {
+                    onEnded()
+                }
             }
+        }
+
+        override func viewWillMove(toWindow newWindow: NSWindow?) {
+            if newWindow == nil {
+                finishDrag(commit: false)
+            }
+
+            super.viewWillMove(toWindow: newWindow)
         }
 
         override func menu(for event: NSEvent) -> NSMenu? {
@@ -388,7 +407,9 @@ struct ReorderableStack<Item, ID: Hashable, Row: View>: View {
         ReorderHandle(
             isDragging: model.dragged == entry.id,
             onChanged: { distance in
-                if model.dragged == nil {
+                // A new drag, or one whose end never arrived (its row went
+                // away mid-drag): start over from this row either way.
+                if model.dragged != entry.id {
                     model.draggedIndex = entry.index
                     model.target = entry.index
                     model.dragged = entry.id

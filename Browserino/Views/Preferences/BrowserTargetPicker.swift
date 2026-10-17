@@ -92,31 +92,32 @@ struct BrowserTargetList: View {
     }
 
     /// Two Chrome profiles can both be called "misku". Their numbers already
-    /// differ; the profile folder makes the names differ too.
-    private func name(for target: BrowserTarget) -> String {
+    /// differ; the browser and profile folder make the names differ too.
+    /// `holders` maps each name to the browsers using it, built once per redraw.
+    private func name(for target: BrowserTarget, holders: [String: [BrowserTarget]]) -> String {
         guard Bundle(url: target.app) != nil else {
             return "\(target.app.appDisplayName) (not installed)"
         }
 
         let name = target.displayName(using: names)
-        let sameName = browsers.filter { $0 != target && $0.displayName(using: names) == name }
+        let others = (holders[name] ?? []).filter { $0 != target }
 
-        guard !sameName.isEmpty, let directory = target.profile else {
+        guard !others.isEmpty, let directory = target.profile else {
             return name
         }
 
         let browser = Bundle(url: target.app)?.appDisplayName ?? target.app.appDisplayName
 
-        return sameName.contains { $0.app == target.app }
+        return others.contains { $0.app == target.app }
             ? "\(name) (\(browser), \(directory))"
             : "\(name) (\(browser))"
     }
 
-    private func row(_ target: BrowserTarget, number: Int?) -> some View {
+    private func row(_ target: BrowserTarget, number: Int?, holders: [String: [BrowserTarget]]) -> some View {
         BrowserListRow(
             target: target,
             number: number,
-            name: name(for: target),
+            name: name(for: target, holders: holders),
             isSelected: target == selection,
             isHidden: hiddenBrowsers.contains(target),
             select: {
@@ -128,17 +129,19 @@ struct BrowserTargetList: View {
     }
 
     var body: some View {
+        let holders = Dictionary(grouping: browsers) { $0.displayName(using: names) }
+
         VStack(spacing: 0) {
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(spacing: 2) {
                         ForEach(Array(browsers.enumerated()), id: \.element) { index, target in
-                            row(target, number: index + 1)
+                            row(target, number: index + 1, holders: holders)
                         }
 
                         // An app chosen through Other App stays visible and selected.
                         if let selection, !browsers.contains(selection) {
-                            row(selection, number: nil)
+                            row(selection, number: nil, holders: holders)
                         }
                     }
                     .padding(6)
@@ -160,7 +163,7 @@ struct BrowserTargetList: View {
 
                 Spacer(minLength: 12)
 
-                Text(selection.map { name(for: $0) } ?? "Choose a browser")
+                Text(selection.map { name(for: $0, holders: holders) } ?? "Choose a browser")
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)

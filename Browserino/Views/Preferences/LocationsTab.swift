@@ -23,6 +23,20 @@ struct SearchLocationsSheet: View {
 
     private static let applications = "/Applications"
 
+    /// NSWorkspace builds a new image on every call, and rows redraw often.
+    @MainActor private static var icons: [String: NSImage] = [:]
+
+    @MainActor private static func icon(for path: String) -> NSImage {
+        if let cached = icons[path] {
+            return cached
+        }
+
+        let image = NSWorkspace.shared.icon(forFile: path)
+        icons[path] = image
+
+        return image
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Search Locations")
@@ -39,7 +53,7 @@ struct SearchLocationsSheet: View {
                     }
 
                     HStack(spacing: 10) {
-                        Image(nsImage: NSWorkspace.shared.icon(forFile: directory.directoryPath))
+                        Image(nsImage: Self.icon(for: directory.directoryPath))
                             .resizable()
                             .frame(width: 18, height: 18)
 

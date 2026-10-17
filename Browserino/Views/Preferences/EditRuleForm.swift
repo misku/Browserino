@@ -19,6 +19,7 @@ struct RuleForm: View {
     @AppStorage("ruleTestUrls") private var testUrls: String = "https://github.com/AlexStrNik/Browserino\nhttps://x.com/alexstrnik"
     @State private var portText: String = ""
     @State private var confirmDelete = false
+    @State private var isLoaded = false
 
     /// nil while the field is empty or not a valid port.
     private var parsedPort: Int? {
@@ -162,6 +163,13 @@ struct RuleForm: View {
             Text("Links it matches go to the next matching rule, or to All Other Links.")
         }
         .onAppear {
+            // Once: appear can fire again while the sheet is presented, and
+            // must not throw away what the user typed.
+            guard !isLoaded else {
+                return
+            }
+
+            isLoaded = true
             regex = original?.regex ?? ""
             portText = original?.port.map(String.init) ?? ""
         }

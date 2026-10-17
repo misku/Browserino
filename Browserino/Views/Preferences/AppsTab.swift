@@ -99,11 +99,17 @@ private struct AppRow: View {
     }
 }
 
+/// The App being edited, with its place in the list.
+private struct EditingApp: Identifiable {
+    let id: Int
+    let app: App
+}
+
 struct AppsTab: View {
     @AppStorage("apps") private var apps: [App] = []
 
     @State private var addPresented = false
-    @State private var editingIndex: Int?
+    @State private var editing: EditingApp?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -122,7 +128,7 @@ struct AppsTab: View {
                             }
 
                             AppRow(app: app) {
-                                editingIndex = index
+                                editing = EditingApp(id: index, app: app)
                             }
                         }
                     }
@@ -147,26 +153,25 @@ struct AppsTab: View {
                 }
             )
         }
-        .sheet(
-            isPresented: Binding(
-                get: { editingIndex != nil },
-                set: { if !$0 { editingIndex = nil } }
-            )
-        ) {
-            if let index = editingIndex, apps.indices.contains(index) {
-                AppForm(
-                    original: apps[index],
-                    onCancel: { editingIndex = nil },
-                    onSave: {
-                        apps[index] = $0
-                        editingIndex = nil
-                    },
-                    onDelete: {
-                        apps.remove(at: index)
-                        editingIndex = nil
+        // Driven by the item itself, so the sheet keeps its content while it
+        // animates away instead of going blank.
+        .sheet(item: $editing) { item in
+            AppForm(
+                original: item.app,
+                onCancel: { editing = nil },
+                onSave: { app in
+                    if apps.indices.contains(item.id) {
+                        apps[item.id] = app
                     }
-                )
-            }
+                    editing = nil
+                },
+                onDelete: {
+                    if apps.indices.contains(item.id) {
+                        apps.remove(at: item.id)
+                    }
+                    editing = nil
+                }
+            )
         }
     }
 }

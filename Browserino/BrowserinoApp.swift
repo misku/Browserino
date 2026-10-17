@@ -49,6 +49,8 @@ final class SettingsTabViewController: NSTabViewController {
     override func tabView(_ tabView: NSTabView, didSelect tabViewItem: NSTabViewItem?) {
         super.tabView(tabView, didSelect: tabViewItem)
 
+        HoverBubble.shared.hideAll()
+
         lastPane = selectedTabViewItemIndex
     }
 }
@@ -80,7 +82,16 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
         // Rules stored before they had ids get one now. Until it is saved,
         // every read would invent a new id and rows would lose their state.
-        rules = rules
+        // Only then, and only when every stored rule was read back: writing
+        // after a failed read would replace the user's rules with nothing.
+        if let raw = UserDefaults.standard.string(forKey: "rules"),
+           let stored = try? JSONSerialization.jsonObject(with: Data(raw.utf8)) as? [[String: Any]],
+           stored.contains(where: { $0["id"] == nil }) {
+            let decoded = rules
+            if decoded.count == stored.count {
+                rules = decoded
+            }
+        }
 
         // Earlier builds recorded Escape, Return and other keys the picker needs
         // for itself. Such a row showed a blank shortcut and could steal the key.
@@ -196,11 +207,18 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
 
         // Fresh panes on every open, so folded rows, sheets and half-typed
-        // fields from last time are gone.
+        // fields from last time are gone. Installing them resizes the window,
+        // so the size and place the user left it at are put back afterwards.
+        let savedFrame = UserDefaults.standard.string(forKey: "settingsWindowFrame")
         preferencesWindow!.contentViewController = SettingsTabViewController()
         preferencesWindow!.toolbarStyle = .preference
-        preferencesWindow!.setContentSize(NSSize(width: 760, height: 560))
-        preferencesWindow!.center()
+
+        if let savedFrame {
+            preferencesWindow!.setFrame(from: savedFrame)
+        } else {
+            preferencesWindow!.setContentSize(NSSize(width: 760, height: 560))
+            preferencesWindow!.center()
+        }
 
         preferencesWindow!.isReleasedWhenClosed = false
 
@@ -218,6 +236,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     @objc func preferencesWindowWillClose(_ notification: Notification) {
+        if let frame = preferencesWindow?.frameDescriptor {
+            UserDefaults.standard.set(frame, forKey: "settingsWindowFrame")
+        }
+
+        // A bubble shown when the window closed would otherwise stay on screen.
+        HoverBubble.shared.hideAll()
+
         preferencesWindow?.collectionBehavior.remove(.managed)
         preferencesWindow?.collectionBehavior.remove(.participatesInCycle)
 
@@ -354,9 +379,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             let hasBrowser = browsers.contains {
                 !hiddenBrowsers.contains($0) && Bundle(url: $0.app) != nil
             }
-            let hasApp = apps.contains { app in
-                urls.contains { $0.matchesHost(app.host) } && Bundle(url: app.app) != nil
-            }
+            let hasApp = apps.contains { matchesLink($0, urls) }
 
             guard hasBrowser || hasApp else {
                 openPreferences()
@@ -368,7 +391,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             selectorWindow = BrowserinoWindow()
         }
         
-        let screen = getScreenWithMouse()!.visibleFrame
+        // The pointer can sit in the gap between two screens.
+        guard let screen = (getScreenWithMouse() ?? NSScreen.main)?.visibleFrame else {
+            return
+        }
         
         selectorWindow?.setFrameOrigin(
             NSPoint(

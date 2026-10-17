@@ -7,14 +7,27 @@
 
 import Foundation
 
+/// Decodes one element of a stored array without failing the others.
+private struct Lenient<Element: Decodable>: Decodable {
+    let value: Element?
+
+    init(from decoder: Decoder) throws {
+        value = try? Element(from: decoder)
+    }
+}
+
 extension Array: @retroactive RawRepresentable where Element: Codable {
+    /// One element this build can't read, from a newer build or a bad import,
+    /// is skipped rather than failing the whole array. A failed array makes
+    /// @AppStorage fall back to its empty default, and the next save would
+    /// write that over every rule, browser or app the user had.
     public init?(rawValue: String) {
         guard let data = rawValue.data(using: .utf8),
-              let result = try? JSONDecoder().decode([Element].self, from: data)
+              let result = try? JSONDecoder().decode([Lenient<Element>].self, from: data)
         else {
             return nil
         }
-        self = result
+        self = result.compactMap(\.value)
     }
 
     public var rawValue: String {
