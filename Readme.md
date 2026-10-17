@@ -1,6 +1,6 @@
 # Browserino
 
-![Browserino's Rules settings](images/rules.png)
+![Browserino's Rules settings](images/rules.jpg)
 
 Browserino is a small, native browser picker for macOS, written in SwiftUI. Set it as your default browser, and every link you click goes through it. Browserino then opens the link in the right browser, profile or app by your rules, or shows a quick picker so you can choose.
 
