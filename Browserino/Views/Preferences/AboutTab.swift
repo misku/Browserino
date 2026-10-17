@@ -27,9 +27,12 @@ struct AboutTab: View {
                 .foregroundStyle(.secondary)
 
             Link("Browserino on GitHub", destination: URL(string: "https://github.com/AlexStrNik/Browserino/")!)
-                .help("Open the project page in your browser")
+                .help("Open the original project page in your browser")
 
-            Text("Thanks to @byt3m4st3r, @mihado, @ventz and others for contributions!")
+            Link("Fork created by @misku", destination: URL(string: "https://github.com/misku/Browserino")!)
+                .help("Open this fork's project page in your browser")
+
+            Text("Thanks to @AlexStrNik, who created Browserino, and to @matijazezelj, @xplorick, @byt3m4st3r, @mihado, @ventz, @sayre4ux, @mihai97ionita, @webcoyote, @simonswine and others for contributions!")
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
