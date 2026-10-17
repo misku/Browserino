@@ -203,16 +203,25 @@ struct BrowsersTab: View {
         }
     }
 
-    private func row(_ browser: BrowserTarget, index: Int, handle: ReorderHandle) -> some View {
+    /// What every row needs from the stored lists, read once per redraw:
+    /// @AppStorage decodes its JSON on each read.
+    private struct Snapshot {
+        let count: Int
+        let hidden: Set<BrowserTarget>
+        /// Index of each browser's first row, which edits its private flag.
+        let firstRowOfApp: [String: Int]
+    }
+
+    private func row(_ browser: BrowserTarget, index: Int, handle: ReorderHandle, snapshot: Snapshot) -> some View {
         let bundleId = Bundle(url: browser.app)?.bundleIdentifier ?? ""
-        let firstOfApp = browsers.firstIndex { $0.app == browser.app } ?? index
+        let firstOfApp = snapshot.firstRowOfApp[browser.app.standardizedFileURL.path] ?? index
 
         return BrowserRow(
             browser: browser,
             number: index + 1,
             handle: handle,
             flagRow: firstOfApp == index ? nil : firstOfApp + 1,
-            isHidden: hiddenBrowsers.contains(browser),
+            isHidden: snapshot.hidden.contains(browser),
             name: name(for: browser, key: browser.shortcutKey(bundleIdentifier: bundleId)),
             privateArg: privateArg(for: bundleId),
             toggleHidden: {
@@ -227,11 +236,23 @@ struct BrowsersTab: View {
                 hiddenBrowsers.removeAll { $0 == browser }
             },
             moveUp: index > 0 ? { browsers.move(from: index, to: index - 1) } : nil,
-            moveDown: index < browsers.count - 1 ? { browsers.move(from: index, to: index + 1) } : nil
+            moveDown: index < snapshot.count - 1 ? { browsers.move(from: index, to: index + 1) } : nil
         )
     }
 
     var body: some View {
+        let list = browsers
+        let snapshot = Snapshot(
+            count: list.count,
+            hidden: Set(hiddenBrowsers),
+            firstRowOfApp: list.enumerated().reduce(into: [:]) { first, entry in
+                let path = entry.element.app.standardizedFileURL.path
+                if first[path] == nil {
+                    first[path] = entry.offset
+                }
+            }
+        )
+
         VStack(alignment: .leading, spacing: 12) {
             ForEach(appsNeedingAccess, id: \.self) { app in
                 HStack(spacing: 10) {
@@ -321,7 +342,7 @@ struct BrowsersTab: View {
             .padding(.horizontal, 12)
 
             ScrollView {
-                if browsers.isEmpty {
+                if list.isEmpty {
                     Text("No browsers found. Click Rescan, or add a folder under Search Locations.")
                         .foregroundStyle(.secondary)
                         .frame(maxWidth: .infinity)
@@ -329,7 +350,7 @@ struct BrowsersTab: View {
                 } else {
                     SettingsCard {
                         ReorderableStack(
-                            items: browsers,
+                            items: list,
                             id: { $0 },
                             move: { from, to in browsers.move(from: from, to: to) }
                         ) { browser, index, handle in
@@ -338,7 +359,7 @@ struct BrowsersTab: View {
                                     RowDivider(leadingInset: 40)
                                 }
 
-                                row(browser, index: index, handle: handle)
+                                row(browser, index: index, handle: handle, snapshot: snapshot)
                             }
                         }
                     }

@@ -33,6 +33,43 @@ struct SettingsDocument: FileDocument {
     }
 }
 
+/// The settings a backup carries, and how each is stored. Window places, the
+/// last pane and folder grants belong to this Mac and stay out of it.
+enum SettingsBackup {
+    enum Kind {
+        /// A list or table stored as JSON text; the closure says whether
+        /// this build can read all of it.
+        case json(@Sendable (String) -> Bool)
+        case flag
+        case text
+    }
+
+    private static func readable<T: Decodable>(_ type: T.Type) -> @Sendable (String) -> Bool {
+        { (try? JSONDecoder().decode(T.self, from: Data($0.utf8))) != nil }
+    }
+
+    static var kinds: [String: Kind] {
+        [
+            "rules": .json(readable([Rule].self)),
+            "browsers": .json(readable([BrowserTarget].self)),
+            "hiddenBrowsers": .json(readable([BrowserTarget].self)),
+            "catchallTargets": .json(readable([BrowserTarget].self)),
+            "apps": .json(readable([App].self)),
+            "directories": .json(readable([Directory].self)),
+            "shortcuts": .json(readable([String: String].self)),
+            "browserNames": .json(readable([String: String].self)),
+            "privateArgs": .json(readable([String: String].self)),
+            "catchallIncognito": .flag,
+            "apps_autoOpen": .flag,
+            "apps_atTop": .flag,
+            "showInMenuBar": .flag,
+            "copy_closeAfterCopy": .flag,
+            "copy_alternativeShortcut": .flag,
+            "ruleTestUrls": .text,
+        ]
+    }
+}
+
 struct GeneralTab: View {
     @State private var isDefault = false
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
@@ -71,32 +108,21 @@ struct GeneralTab: View {
     
     func exportSettings() {
         let defaults = UserDefaults.standard
-        let dictionary = defaults.dictionaryRepresentation()
-        
-        let filteredSettings = dictionary.filter { key, _ in
-            !key.contains("NS") &&
-            !key.contains("com.apple.") &&
-            !key.contains("Apple") &&
-            !key.contains("METAL") &&
-            !key.contains("KB_") &&
-            !key.contains("cloud.") &&
-            !key.starts(with: "_") &&
-            !key.starts(with: "AK") &&
-            key != "shouldShowRSVPDataDetectors" &&
-            key != "MultipleSessionEnabled" &&
-            key != "WebAutomaticSpellingCorrectionEnabled" &&
-            key != "Country"
-        }
-        
         var appSettings: [String: Any] = [:]
-        for (key, value) in filteredSettings {
-            appSettings[key] = value
+
+        for key in SettingsBackup.kinds.keys {
+            if let value = defaults.object(forKey: key) {
+                appSettings[key] = value
+            }
         }
-        
+
         exportDocument = SettingsDocument(settings: appSettings)
         showingExportPicker = true
     }
-    
+
+    /// Checks every setting in the file before writing any, so a bad file
+    /// changes nothing. UserDefaults aborts the app on a value it can't store,
+    /// such as null, so nothing unchecked reaches it.
     func importSettings(from url: URL) {
         let accessed = url.startAccessingSecurityScopedResource()
         defer {
@@ -106,16 +132,60 @@ struct GeneralTab: View {
         }
 
         guard let data = try? Data(contentsOf: url),
-              let settings = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              !settings.isEmpty
+              let settings = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
         else {
+            show("That file isn't a Browserino settings file.")
+            return
+        }
+
+        var values: [String: Any] = [:]
+
+        for (key, kind) in SettingsBackup.kinds {
+            guard let value = settings[key] else {
+                continue
+            }
+
+            switch kind {
+            case .json(let isReadable):
+                guard let text = value as? String, isReadable(text) else {
+                    show("Nothing was imported: \(key) holds a value Browserino can't read.")
+                    return
+                }
+
+                // Rules from an older backup get their ids now, or edits
+                // to them would find no rule to change.
+                values[key] = key == "rules" ? Rule.addingMissingIDs(toStored: text) ?? text : text
+            case .flag:
+                guard let flag = value as? Bool else {
+                    show("Nothing was imported: \(key) should be on or off.")
+                    return
+                }
+
+                values[key] = flag
+            case .text:
+                guard let text = value as? String else {
+                    show("Nothing was imported: \(key) should be text.")
+                    return
+                }
+
+                values[key] = text
+            }
+        }
+
+        guard !values.isEmpty else {
             show("That file holds no Browserino settings.")
             return
         }
 
+        // Replace, not merge: a setting the backup doesn't have goes back to
+        // its default, so nothing from before keeps routing links.
         let defaults = UserDefaults.standard
-        for (key, value) in settings {
-            defaults.set(value, forKey: key)
+        for key in SettingsBackup.kinds.keys {
+            if let value = values[key] {
+                defaults.set(value, forKey: key)
+            } else {
+                defaults.removeObject(forKey: key)
+            }
         }
 
         show("Settings imported.")
@@ -270,7 +340,7 @@ struct GeneralTab: View {
                 pendingImport = nil
             }
         } message: {
-            Text("Rules, apps, browser order, names, shortcuts and private flags are overwritten by the file's.")
+            Text("Rules, apps, browser order, names, shortcuts and private flags are replaced by the file's. Settings the file doesn't have go back to their defaults.")
         }
         .alert("Reset all Browserino settings?", isPresented: $confirmReset) {
             Button("Cancel", role: .cancel) {}

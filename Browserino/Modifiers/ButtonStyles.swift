@@ -147,6 +147,9 @@ struct ReorderHandle: View {
     /// starts the drag.
     let onChanged: (CGFloat) -> Void
     let onEnded: () -> Void
+    /// The drag stopped without a drop: the handle left its window, or the
+    /// window lost focus before the button came up.
+    var onCancelled: () -> Void = {}
     var menu: [HandleMenuItem] = []
 
     var body: some View {
@@ -155,7 +158,7 @@ struct ReorderHandle: View {
             .foregroundStyle(isDragging ? .secondary : .tertiary)
             .frame(width: 16, height: 28)
             .overlay {
-                HandleArea(onChanged: onChanged, onEnded: onEnded, menu: menu)
+                HandleArea(onChanged: onChanged, onEnded: onEnded, onCancelled: onCancelled, menu: menu)
             }
             .accessibilityHidden(true)
     }
@@ -171,17 +174,20 @@ struct ReorderHandle: View {
 private struct HandleArea: NSViewRepresentable {
     let onChanged: (CGFloat) -> Void
     let onEnded: () -> Void
+    let onCancelled: () -> Void
     let menu: [HandleMenuItem]
 
     final class HandleView: NSView {
         var onChanged: (CGFloat) -> Void = { _ in }
         var onEnded: () -> Void = {}
+        var onCancelled: () -> Void = {}
         var items: [HandleMenuItem] = []
 
         private var start: NSPoint?
         private var startScroll: CGFloat = 0
         private var isDragging = false
         private var menuTargets: [HandleMenuTarget] = []
+        private var resignObserver: NSObjectProtocol?
 
         override init(frame frameRect: NSRect) {
             super.init(frame: frameRect)
@@ -215,6 +221,17 @@ private struct HandleArea: NSViewRepresentable {
             // I-beam as the pointer crosses them mid-drag.
             window?.disableCursorRects()
             NSCursor.closedHand.push()
+
+            // Losing focus mid-drag means no mouseUp; undo everything then.
+            resignObserver = NotificationCenter.default.addObserver(
+                forName: NSWindow.didResignKeyNotification,
+                object: window,
+                queue: .main
+            ) { [weak self] _ in
+                MainActor.assumeIsolated {
+                    self?.finishDrag(commit: false)
+                }
+            }
         }
 
         override func mouseDragged(with event: NSEvent) {
@@ -252,10 +269,17 @@ private struct HandleArea: NSViewRepresentable {
             window?.enableCursorRects()
             window?.invalidateCursorRects(for: self)
 
+            if let resignObserver {
+                NotificationCenter.default.removeObserver(resignObserver)
+                self.resignObserver = nil
+            }
+
             if isDragging {
                 isDragging = false
                 if commit {
                     onEnded()
+                } else {
+                    onCancelled()
                 }
             }
         }
@@ -303,6 +327,7 @@ private struct HandleArea: NSViewRepresentable {
     func updateNSView(_ nsView: HandleView, context: Context) {
         nsView.onChanged = onChanged
         nsView.onEnded = onEnded
+        nsView.onCancelled = onCancelled
         nsView.items = menu
     }
 }
@@ -326,7 +351,8 @@ struct ReorderableStack<Item, ID: Hashable, Row: View>: View {
     let items: [Item]
     let id: (Item) -> ID
     var spacing: CGFloat = 0
-    var onDragStarted: () -> Void = {}
+    /// Called with the dragged row's index when a drag starts.
+    var onDragStarted: (_ index: Int) -> Void = { _ in }
     let move: (_ from: Int, _ to: Int) -> Void
     @ViewBuilder let row: (_ item: Item, _ index: Int, _ handle: ReorderHandle) -> Row
 
@@ -413,7 +439,7 @@ struct ReorderableStack<Item, ID: Hashable, Row: View>: View {
                     model.draggedIndex = entry.index
                     model.target = entry.index
                     model.dragged = entry.id
-                    onDragStarted()
+                    onDragStarted(entry.index)
                 }
 
                 model.translation = distance
@@ -436,6 +462,12 @@ struct ReorderableStack<Item, ID: Hashable, Row: View>: View {
                     if from != to {
                         move(from, to)
                     }
+                }
+            },
+            onCancelled: {
+                withAnimation(.snappy(duration: 0.2)) {
+                    model.dragged = nil
+                    model.translation = 0
                 }
             },
             menu: [

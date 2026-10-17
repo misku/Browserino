@@ -19,20 +19,27 @@ struct App: Codable, Hashable {
         BrowserTarget(app: app, profile: profile, container: container)
     }
 
-    /// The links with this app's scheme override applied.
+    /// RFC 3986: a letter, then letters, digits, "+", "-" or ".". Anything
+    /// else makes URLComponents raise an exception and take the app down.
+    static func isValidScheme(_ scheme: String) -> Bool {
+        scheme.range(of: "^[A-Za-z][A-Za-z0-9+.-]*$", options: .regularExpression) != nil
+    }
+
+    /// The links with this app's scheme override applied. An override that
+    /// isn't a valid scheme, from an older build or an import, is ignored.
     func urlsToOpen(_ urls: [URL]) -> [URL] {
-        if schemeOverride.isEmpty {
+        guard !schemeOverride.isEmpty, App.isValidScheme(schemeOverride) else {
             return urls
         }
 
-        return urls.map {
-            let url = NSURLComponents.init(
-                url: $0,
-                resolvingAgainstBaseURL: true
-            )
-            url!.scheme = schemeOverride
+        return urls.map { url in
+            guard var components = URLComponents(url: url, resolvingAgainstBaseURL: true) else {
+                return url
+            }
 
-            return url!.url!
+            components.scheme = schemeOverride
+
+            return components.url ?? url
         }
     }
 }

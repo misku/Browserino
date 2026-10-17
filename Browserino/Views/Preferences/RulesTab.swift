@@ -484,7 +484,10 @@ struct RulesTab: View {
     @State private var editing: Rule?
     @State private var pendingReset: RowKey?
     @State private var pendingDelete: Rule?
-    @State private var choosingOtherAppFor: RowKey?
+    /// The row Choose Other App adds to. Kept apart from the dialog's own
+    /// flag: SwiftUI clears that before it reports the choice.
+    @State private var otherAppDestination: RowKey?
+    @State private var otherAppPresented = false
     @State private var width: CGFloat = 660
 
     /// Six icons fit next to a readable pattern at the narrowest window; every
@@ -567,7 +570,10 @@ struct RulesTab: View {
                 names: lookup.names,
                 targets: rule.targets,
                 setTargets: { setTargets($0, for: .rule(rule.id)) },
-                chooseOtherApp: { choosingOtherAppFor = .rule(rule.id) }
+                chooseOtherApp: {
+                    otherAppDestination = .rule(rule.id)
+                    otherAppPresented = true
+                }
             ),
             moveUp: index > 0 ? { move(from: index, to: index - 1) } : nil,
             moveDown: index < count - 1 ? { move(from: index, to: index + 1) } : nil
@@ -601,7 +607,10 @@ struct RulesTab: View {
                 names: lookup.names,
                 targets: catchallTargets,
                 setTargets: { setTargets($0, for: .allOtherLinks) },
-                chooseOtherApp: { choosingOtherAppFor = .allOtherLinks }
+                chooseOtherApp: {
+                    otherAppDestination = .allOtherLinks
+                    otherAppPresented = true
+                }
             )
         )
     }
@@ -660,7 +669,18 @@ struct RulesTab: View {
                             ReorderableStack(
                                 items: allRules,
                                 id: { $0.id },
-                                onDragStarted: { expanded = nil },
+                                onDragStarted: { index in
+                                    // Closing an open list above the dragged row
+                                    // would pull the row out from under the
+                                    // pointer, so only a list at or below it
+                                    // closes.
+                                    if case .rule(let id) = expanded,
+                                       let open = allRules.firstIndex(where: { $0.id == id }),
+                                       open < index {
+                                        return
+                                    }
+                                    expanded = nil
+                                },
                                 move: { from, to in rules.move(from: from, to: to) }
                             ) { rule, index, handle in
                                 VStack(spacing: 0) {
@@ -716,13 +736,14 @@ struct RulesTab: View {
         // One importer for every row's Choose Other App, so a result can only
         // ever reach the row that asked for it.
         .fileImporter(
-            isPresented: Binding(
-                get: { choosingOtherAppFor != nil },
-                set: { if !$0 { choosingOtherAppFor = nil } }
-            ),
+            isPresented: $otherAppPresented,
             allowedContentTypes: [.application]
         ) { result in
-            guard let key = choosingOtherAppFor, case .success(let url) = result else {
+            defer {
+                otherAppDestination = nil
+            }
+
+            guard let key = otherAppDestination, case .success(let url) = result else {
                 return
             }
 
@@ -738,7 +759,6 @@ struct RulesTab: View {
             if !current.contains(target) {
                 setTargets((current + [target]).ordered(like: browsers), for: key)
             }
-            choosingOtherAppFor = nil
         }
         .sheet(isPresented: $addPresented) {
             RuleForm(

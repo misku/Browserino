@@ -38,8 +38,22 @@ struct AppForm: View {
         return URL(string: url)?.host()
     }
 
+    /// "zoommtg", also when typed as "zoommtg:" or "zoommtg://"; nil while it
+    /// isn't a valid scheme.
+    private var normalizedScheme: String? {
+        var scheme = schemeOverride.trimmingCharacters(in: .whitespaces)
+
+        if scheme.hasSuffix("://") {
+            scheme.removeLast(3)
+        } else if scheme.hasSuffix(":") {
+            scheme.removeLast()
+        }
+
+        return scheme.isEmpty || App.isValidScheme(scheme) ? scheme : nil
+    }
+
     private var canSave: Bool {
-        normalizedHost != nil && target != nil
+        normalizedHost != nil && target != nil && normalizedScheme != nil
     }
 
     /// A caption over a field, the way the rest of the sheet labels things.
@@ -81,9 +95,15 @@ struct AppForm: View {
                     .font(.body.monospaced())
                     .labelsHidden()
 
-                Text("For apps that register their own scheme: the link opens with it instead of http or https.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                if normalizedScheme == nil {
+                    Label("A scheme starts with a letter and holds only letters, digits, +, - and dots.", systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                } else {
+                    Text("For apps that register their own scheme: the link opens with it instead of http or https.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
 
             HStack {
@@ -99,14 +119,14 @@ struct AppForm: View {
                     .keyboardShortcut(.cancelAction)
 
                 Button(original == nil ? "Add App" : "Save") {
-                    guard let host = normalizedHost, let target else {
+                    guard let host = normalizedHost, let target, let scheme = normalizedScheme else {
                         return
                     }
 
                     onSave(
                         App(
                             host: host,
-                            schemeOverride: schemeOverride.trimmingCharacters(in: .whitespaces),
+                            schemeOverride: scheme,
                             app: target.app,
                             profile: target.profile,
                             container: target.container

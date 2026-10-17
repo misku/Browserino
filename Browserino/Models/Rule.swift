@@ -98,18 +98,27 @@ struct Rule: Hashable, Codable, Identifiable {
         return url.absoluteString.firstMatch(of: compiledRegex) != nil && matchesPort(of: url)
     }
 
-    /// Unrelated links: different schemes, hosts, ports, paths and queries. A
-    /// pattern for any port that takes all of them, such as ".*", catches every
-    /// web link, so nothing below it is ever reached.
+    /// Unrelated links: different schemes, hosts, ports, paths, queries and
+    /// case. A pattern for any port that takes all of them, such as ".*",
+    /// catches every web link, so nothing below it is ever reached.
     private static let unrelatedLinks = [
         "https://browserino.invalid/",
         "http://example.org/x?y=1",
         "https://203.0.113.7:8443/a/b#c",
         "http://localhost/",
+        "https://Login.Example.COM/login?next=%2F",
+        "http://a.b.c.d.example.net/account/settings/",
+        "https://example.com",
     ]
 
     @MainActor var matchesEveryLink: Bool {
-        guard port == nil, let compiledRegex else {
+        // Samples can't prove a pattern takes everything, so this only flags
+        // patterns without lookarounds. "(?!login)" can exclude exactly the
+        // links a later rule exists for, and no sample would show it.
+        guard port == nil,
+              !regex.contains("(?!"), !regex.contains("(?="), !regex.contains("(?<"),
+              let compiledRegex
+        else {
             return false
         }
 
@@ -120,6 +129,35 @@ struct Rule: Hashable, Codable, Identifiable {
 }
 
 extension Rule {
+    /// Gives every stored rule that lacks one a permanent id, working on the
+    /// JSON itself so a rule this build can't read is kept as it was. Without
+    /// a stored id each read invents a new one, and edits find no rule to
+    /// change. nil when nothing needed an id.
+    static func addingMissingIDs(toStored json: String) -> String? {
+        guard var rules = try? JSONSerialization.jsonObject(with: Data(json.utf8)) as? [Any] else {
+            return nil
+        }
+
+        var changed = false
+
+        for index in rules.indices {
+            if var rule = rules[index] as? [String: Any], rule["id"] == nil {
+                rule["id"] = UUID().uuidString
+                rules[index] = rule
+                changed = true
+            }
+        }
+
+        guard changed,
+              let data = try? JSONSerialization.data(withJSONObject: rules),
+              let migrated = String(data: data, encoding: .utf8)
+        else {
+            return nil
+        }
+
+        return migrated
+    }
+
     /// The keys rules were stored under before they held several browsers.
     private enum LegacyCodingKeys: String, CodingKey {
         case app

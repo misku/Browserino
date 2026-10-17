@@ -80,17 +80,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         
         UserDefaults.standard.addObserver(self, forKeyPath: "showInMenuBar", options: [.new], context: nil)
 
-        // Rules stored before they had ids get one now. Until it is saved,
-        // every read would invent a new id and rows would lose their state.
-        // Only then, and only when every stored rule was read back: writing
-        // after a failed read would replace the user's rules with nothing.
+        // Rules stored before they had ids get one now, in the stored JSON
+        // itself, so a rule this build can't read survives untouched.
         if let raw = UserDefaults.standard.string(forKey: "rules"),
-           let stored = try? JSONSerialization.jsonObject(with: Data(raw.utf8)) as? [[String: Any]],
-           stored.contains(where: { $0["id"] == nil }) {
-            let decoded = rules
-            if decoded.count == stored.count {
-                rules = decoded
-            }
+           let migrated = Rule.addingMissingIDs(toStored: raw) {
+            UserDefaults.standard.set(migrated, forKey: "rules")
         }
 
         // Earlier builds recorded Escape, Return and other keys the picker needs
