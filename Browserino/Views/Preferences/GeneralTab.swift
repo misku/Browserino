@@ -39,7 +39,9 @@ struct GeneralTab: View {
     @State private var showingExportPicker = false
     @State private var showingImportPicker = false
     @State private var exportDocument = SettingsDocument()
-    @AppStorage("browsers") private var browsers: [BrowserTarget] = []
+    @State private var pendingImport: URL?
+    @State private var confirmReset = false
+    @State private var status: String?
     @AppStorage("copy_closeAfterCopy") private var closeAfterCopy: Bool = false
     @AppStorage("copy_alternativeShortcut") private var alternativeShortcut: Bool = false
     @AppStorage("showInMenuBar") private var showInMenuBar: Bool = true
@@ -52,6 +54,19 @@ struct GeneralTab: View {
         }
         
         return Bundle(url: browserUrl)?.bundleIdentifier
+    }
+
+    /// Says what happened next to the buttons for a few seconds, instead of in a
+    /// console nobody reads.
+    private func show(_ message: String) {
+        status = message
+
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(4))
+            if status == message {
+                status = nil
+            }
+        }
     }
     
     func exportSettings() {
@@ -78,138 +93,98 @@ struct GeneralTab: View {
             appSettings[key] = value
         }
         
-        print(appSettings)
-        
         exportDocument = SettingsDocument(settings: appSettings)
         showingExportPicker = true
     }
     
     func importSettings(from url: URL) {
-        do {
-            let data = try Data(contentsOf: url)
-            let settings = try JSONSerialization.jsonObject(with: data) as? [String: Any]
-            
-            guard let settings = settings else {
-                print("Invalid settings format")
-                return
+        let accessed = url.startAccessingSecurityScopedResource()
+        defer {
+            if accessed {
+                url.stopAccessingSecurityScopedResource()
             }
-            
-            let defaults = UserDefaults.standard
-            for (key, value) in settings {
-                defaults.set(value, forKey: key)
-            }
-            
-            print("Settings imported successfully")
-        } catch {
-            print("Failed to import settings: \(error.localizedDescription)")
         }
+
+        guard let data = try? Data(contentsOf: url),
+              let settings = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              !settings.isEmpty
+        else {
+            show("That file holds no Browserino settings.")
+            return
+        }
+
+        let defaults = UserDefaults.standard
+        for (key, value) in settings {
+            defaults.set(value, forKey: key)
+        }
+
+        show("Settings imported.")
+    }
+
+    func resetSettings() {
+        let defaults = UserDefaults.standard
+        let dictionary = defaults.dictionaryRepresentation()
+        dictionary.keys.forEach { key in
+            defaults.removeObject(forKey: key)
+        }
+
+        show("All settings were reset.")
     }
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack(alignment: .top, spacing: 32) {
-                Text("Default browser")
-                    .font(.headline)
-                    .frame(width: 200, alignment: .trailing)
-                
-                VStack(alignment: .leading) {
-                    Button(action: {
-                        NSWorkspace.shared.setDefaultApplication(
-                            at: Bundle.main.bundleURL,
-                            toOpenURLsWithScheme: "http"
-                        ) { _ in
-                            Task { @MainActor in
-                                isDefault = defaultBrowser() == Bundle.main.bundleIdentifier
+        Form {
+            Section {
+                if isDefault {
+                    Label("Browserino is your default browser", systemImage: "checkmark.circle.fill")
+                        .foregroundStyle(.green)
+                } else {
+                    LabeledContent("Browserino is not your default browser") {
+                        Button("Make Default") {
+                            NSWorkspace.shared.setDefaultApplication(
+                                at: Bundle.main.bundleURL,
+                                toOpenURLsWithScheme: "http"
+                            ) { _ in
+                                Task { @MainActor in
+                                    isDefault = defaultBrowser() == Bundle.main.bundleIdentifier
+                                }
                             }
                         }
-                    }) {
-                        Text("Make default")
+                        .help("Make Browserino your default web browser")
                     }
-                    .disabled(isDefault)
-                    
-                    Text("Make Browserino default browser to use it")
+                }
+            } header: {
+                Text("Default Browser")
+            } footer: {
+                if !isDefault {
+                    Text("Browserino has to be the default browser to choose where links open.")
                         .font(.callout)
-                        .opacity(0.5)
+                        .foregroundStyle(.secondary)
                 }
             }
-            
-            HStack(alignment: .top, spacing: 32) {
-                Text("Installed Browsers")
-                    .font(.headline)
-                    .frame(width: 200, alignment: .trailing)
-                
-                VStack(alignment: .leading) {
-                    Button(action: {
-                        browsers = BrowserUtil.loadBrowsers(
-                            oldBrowsers: browsers
-                        )
-                    }) {
-                        Text("Rescan")
-                    }
-                    
-                    Text("Rescan list of installed browsers")
-                        .font(.callout)
-                        .opacity(0.5)
-                }
-            }
-            
-            HStack(alignment: .top, spacing: 32) {
-                Text("Copy URL")
-                    .font(.headline)
-                    .frame(width: 200, alignment: .trailing)
-                
-                VStack(alignment: .leading) {
-                    Toggle(isOn: $closeAfterCopy) {
-                        Text("Close prompt view after copying URL")
-                            .font(.callout)
-                            .opacity(0.5)
-                    }
-                    
-                    Toggle(isOn: $alternativeShortcut) {
-                        Text("Use Command+C instead of Command+Option+C")
-                            .font(.callout)
-                            .opacity(0.5)
-                    }
-                }
-            }
-            
-            HStack(alignment: .top, spacing: 32) {
-                Text("Appearance")
-                    .font(.headline)
-                    .frame(width: 200, alignment: .trailing)
-                
-                VStack(alignment: .leading) {
-                    Toggle(isOn: $appsAtTop) {
-                        Text("Show apps before browsers")
-                            .font(.callout)
-                            .opacity(0.5)
-                    }
-                    
-                    Toggle(isOn: $autoOpenApps) {
-                        Text("Open Apps with a host without asking")
-                            .font(.callout)
-                            .opacity(0.5)
-                    }
-                    
-                    Toggle(isOn: $showInMenuBar) {
-                        Text("Show Browserino in menu bar")
-                            .font(.callout)
-                            .opacity(0.5)
-                    }
-                }
-            }
-            
-            HStack(alignment: .top, spacing: 32) {
-                Text("Startup")
-                    .font(.headline)
-                    .frame(width: 200, alignment: .trailing)
 
-                VStack(alignment: .leading) {
-                    Toggle(isOn: $launchAtLogin) {
-                        Text("Launch Browserino at login")
-                            .font(.callout)
-                            .opacity(0.5)
-                    }
+            Section("Picker") {
+                Toggle("Show apps above browsers", isOn: $appsAtTop)
+
+                Toggle(isOn: $autoOpenApps) {
+                    Text("Open app links without asking")
+                    Text("When an app in the Apps tab matches the link's host, it opens directly.")
+                }
+
+                Toggle("Close the picker after copying the link", isOn: $closeAfterCopy)
+
+                Picker("Copy link shortcut", selection: $alternativeShortcut) {
+                    Text("⌥⌘C").tag(false)
+                    Text("⌘C").tag(true)
+                }
+            }
+
+            Section("Startup") {
+                Toggle(isOn: $showInMenuBar) {
+                    Text("Show in menu bar")
+                    Text("When hidden, open Browserino from Applications to get back here.")
+                }
+
+                Toggle("Open at login", isOn: $launchAtLogin)
                     .onChange(of: launchAtLogin) { _, newValue in
                         do {
                             if newValue {
@@ -221,63 +196,44 @@ struct GeneralTab: View {
                             launchAtLogin = SMAppService.mainApp.status == .enabled
                         }
                     }
-                }
             }
 
-            HStack(alignment: .top, spacing: 32) {
-                Text("Import/Export")
-                    .font(.headline)
-                    .frame(width: 200, alignment: .trailing)
-                
-                VStack(alignment: .leading) {
-                    Button(action: {
-                        exportSettings()
-                    }) {
-                        Text("Export")
-                    }
-                    
-                    Text("Export all settings")
-                        .font(.callout)
-                        .opacity(0.5)
-                    
-                    Button(action: {
-                        showingImportPicker = true
-                    }) {
-                        Text("Import")
-                    }
-                    
-                    Text("Import all settings")
-                        .font(.callout)
-                        .opacity(0.5)
-                }
-            }
-            
-            HStack(alignment: .top, spacing: 32) {
-                Text("System reset")
-                    .font(.headline)
-                    .frame(width: 200, alignment: .trailing)
-                
-                VStack(alignment: .leading) {
-                    Button(action: {
-                        let defaults = UserDefaults.standard
-                        let dictionary = defaults.dictionaryRepresentation()
-                        dictionary.keys.forEach { key in
-                            defaults.removeObject(forKey: key)
+            Section {
+                LabeledContent("Back up") {
+                    HStack {
+                        Button("Export…") {
+                            exportSettings()
                         }
-                    }) {
-                        Text("Reset")
+                        .help("Save all settings to a file")
+
+                        Button("Import…") {
+                            showingImportPicker = true
+                        }
+                        .help("Replace your settings with ones from a file")
                     }
-                    
-                    Text("Reset all preferences")
+                }
+
+                LabeledContent("Reset all settings") {
+                    Button("Reset…", role: .destructive) {
+                        confirmReset = true
+                    }
+                    .help("Erase every Browserino setting")
+                }
+            } header: {
+                Text("Settings")
+            } footer: {
+                if let status {
+                    Text(status)
                         .font(.callout)
-                        .opacity(0.5)
+                        .foregroundStyle(.secondary)
                 }
             }
         }
+        .formStyle(.grouped)
+        .toggleStyle(.switch)
         .onAppear {
             isDefault = defaultBrowser() == Bundle.main.bundleIdentifier
         }
-        .padding(20)
         .fileExporter(
             isPresented: $showingExportPicker,
             document: exportDocument,
@@ -286,9 +242,9 @@ struct GeneralTab: View {
         ) { result in
             switch result {
             case .success(let url):
-                print("Settings exported to: \(url)")
+                show("Settings saved to \(url.lastPathComponent).")
             case .failure(let error):
-                print("Export failed: \(error.localizedDescription)")
+                show("Export failed: \(error.localizedDescription)")
             }
         }
         .fileImporter(
@@ -296,14 +252,33 @@ struct GeneralTab: View {
             allowedContentTypes: [.json],
             allowsMultipleSelection: false
         ) { result in
-            switch result {
-            case .success(let urls):
-                if let url = urls.first {
+            if case .success(let urls) = result {
+                pendingImport = urls.first
+            }
+        }
+        .confirmationDialog(
+            "Replace your settings with \(pendingImport?.lastPathComponent ?? "this file")?",
+            isPresented: Binding(
+                get: { pendingImport != nil },
+                set: { if !$0 { pendingImport = nil } }
+            )
+        ) {
+            Button("Replace Settings", role: .destructive) {
+                if let url = pendingImport {
                     importSettings(from: url)
                 }
-            case .failure(let error):
-                print("Import failed: \(error.localizedDescription)")
+                pendingImport = nil
             }
+        } message: {
+            Text("Rules, apps, browser order, names, shortcuts and private flags are overwritten by the file's.")
+        }
+        .alert("Reset all Browserino settings?", isPresented: $confirmReset) {
+            Button("Cancel", role: .cancel) {}
+            Button("Reset All Settings", role: .destructive) {
+                resetSettings()
+            }
+        } message: {
+            Text("Rules, apps, browser order, names, shortcuts and private flags are erased. This can't be undone.")
         }
     }
 }

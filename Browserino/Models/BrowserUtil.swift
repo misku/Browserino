@@ -174,8 +174,7 @@ class BrowserUtil {
             arguments.append("--profile-directory=\(profile)")
         }
 
-        if isIncognito, let bundleIdentifier = bundle.bundleIdentifier,
-           let privateArg = privateArgs[bundleIdentifier], !privateArg.isEmpty {
+        if isIncognito, let privateArg = privateArgument(for: target, bundle: bundle) {
             arguments.append(privateArg)
         }
 
@@ -201,6 +200,63 @@ class BrowserUtil {
             withApplicationAt: target.app,
             configuration: configuration
         )
+    }
+
+    /// The private-window switch of browsers that document one. It applies while
+    /// the user has typed nothing, so "Private window" works without a trip to
+    /// the Browsers tab. Safari has no such switch.
+    static func defaultPrivateArgument(forAppAt app: URL) -> String? {
+        guard let identifier = Bundle(url: app)?.bundleIdentifier?.lowercased() else {
+            return nil
+        }
+
+        if identifier.hasPrefix("com.apple.safari") {
+            return nil
+        }
+
+        if identifier.hasPrefix("com.microsoft.edgemac") {
+            return "--inprivate"
+        }
+
+        if identifier.hasPrefix("org.mozilla.")
+            || identifier.hasPrefix("app.zen-browser.")
+            || identifier.hasPrefix("io.gitlab.librewolf")
+            || identifier.hasPrefix("net.waterfox.") {
+            return "--private-window"
+        }
+
+        if identifier.hasPrefix("com.operasoftware.") {
+            return "--private"
+        }
+
+        if identifier.hasPrefix("company.thebrowser.") {
+            return nil
+        }
+
+        // Chrome, Brave, Vivaldi, Chromium and their forks all take Chromium's
+        // switch, and all keep a Chromium profile store.
+        if ChromiumProfileService.userDataDirectory(forAppAt: app) != nil
+            || identifier.hasPrefix("com.google.chrome")
+            || identifier.hasPrefix("com.brave.browser")
+            || identifier.hasPrefix("com.vivaldi.vivaldi")
+            || identifier.hasPrefix("org.chromium.") {
+            return "--incognito"
+        }
+
+        return nil
+    }
+
+    /// What a private open passes: the user's own switch, or the known one.
+    static func privateArgument(for target: BrowserTarget, bundle: Bundle? = nil) -> String? {
+        guard let identifier = (bundle ?? Bundle(url: target.app))?.bundleIdentifier else {
+            return nil
+        }
+
+        if let typed = privateArgs[identifier]?.trimmingCharacters(in: .whitespaces), !typed.isEmpty {
+            return typed
+        }
+
+        return defaultPrivateArgument(forAppAt: target.app)
     }
 
     /// Chromium silently creates a fresh empty profile when handed a directory it

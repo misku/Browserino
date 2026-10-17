@@ -8,6 +8,48 @@
 import SwiftUI
 import Foundation
 
+/// Toolbar-style Settings, the macOS convention for a multi-pane settings
+/// window. It reopens on the pane last used.
+final class SettingsTabViewController: NSTabViewController {
+    @AppStorage("settingsTab") private var lastPane: Int = 0
+
+    init() {
+        super.init(nibName: nil, bundle: nil)
+
+        tabStyle = .toolbar
+        // The window keeps the size the user gave it instead of jumping to
+        // each pane's own size.
+        transitionOptions = []
+
+        for pane in SettingsPane.allCases {
+            let controller = NSHostingController(
+                rootView: pane.content.frame(minWidth: 700, minHeight: 500)
+            )
+            controller.sizingOptions = []
+            controller.title = pane.title
+
+            let item = NSTabViewItem(viewController: controller)
+            item.label = pane.title
+            item.image = NSImage(systemSymbolName: pane.symbol, accessibilityDescription: pane.title)
+            addTabViewItem(item)
+        }
+
+        if tabViewItems.indices.contains(lastPane) {
+            selectedTabViewItemIndex = lastPane
+        }
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) is not used")
+    }
+
+    override func tabView(_ tabView: NSTabView, didSelect tabViewItem: NSTabViewItem?) {
+        super.tabView(tabView, didSelect: tabViewItem)
+
+        lastPane = selectedTabViewItemIndex
+    }
+}
+
 @MainActor
 class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var selectorWindow: BrowserinoWindow?
@@ -59,8 +101,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 let statusButton = statusBarItem!.button
                 statusButton!.image = NSImage.menuIcon
                 
-                let preferences = NSMenuItem(title: "Preferences...", action: #selector(openPreferences), keyEquivalent: "")
-                let quit = NSMenuItem(title: "Quit", action: #selector(quitApp), keyEquivalent: "")
+                let preferences = NSMenuItem(title: "Settings…", action: #selector(openPreferences), keyEquivalent: ",")
+                let quit = NSMenuItem(title: "Quit Browserino", action: #selector(quitApp), keyEquivalent: "q")
                 
                 statusMenu = NSMenu()
                 
@@ -115,10 +157,18 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
     
     @objc func openPreferences() {
+        // Already open: bring it forward without throwing away what the user
+        // is in the middle of.
+        if let preferencesWindow, preferencesWindow.isVisible {
+            NSApplication.shared.activate(ignoringOtherApps: true)
+            preferencesWindow.makeKeyAndOrderFront(nil)
+            return
+        }
+
         if preferencesWindow == nil {
             preferencesWindow = NSWindow(
-                contentRect: NSRect(x: 0, y: 0, width: 700, height: 500),
-                styleMask: [.miniaturizable, .closable, .resizable, .titled],
+                contentRect: NSRect(x: 0, y: 0, width: 760, height: 560),
+                styleMask: [.closable, .resizable, .titled],
                 backing: .buffered,
                 defer: false
             )
@@ -131,12 +181,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             )
         }
 
+        // Fresh panes on every open, so folded rows, sheets and half-typed
+        // fields from last time are gone.
+        preferencesWindow!.contentViewController = SettingsTabViewController()
+        preferencesWindow!.toolbarStyle = .preference
+        preferencesWindow!.setContentSize(NSSize(width: 760, height: 560))
         preferencesWindow!.center()
-        preferencesWindow!.title = "Preferences"
-        preferencesWindow!.contentView = NSHostingView(rootView: PreferencesView())
 
         preferencesWindow!.isReleasedWhenClosed = false
-        preferencesWindow!.titlebarAppearsTransparent = true
 
         preferencesWindow!.contentMinSize = NSSize(width: 700, height: 500)
 

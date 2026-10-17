@@ -35,171 +35,139 @@ struct App: Codable, Hashable {
     }
 }
 
-struct NewApp: View {
-    @AppStorage("apps") private var apps: [App] = []
-    @State private var host: String = ""
-    @State private var openWithPresented = false
-    
-    private var hostValid: Bool {
-        if host.isEmpty {
-            return true
-        }
+private struct AppRow: View {
+    let app: App
+    let edit: () -> Void
 
-        let url = if host.starts(with: /https?:\/\//) {
-            host
-        } else {
-            "http://" + host
-        }
-
-        return URL(string: url)?.host() != nil
-    }
-    
-    var body: some View {
-        HStack {
-            Image(systemName: "plus")
-                .font(
-                    .system(size: 14)
-                )
-                .opacity(0)
-            
-            TextField("example.com or empty for all", text: $host)
-                .font(
-                    .system(size: 14)
-                )
-            
-            Spacer()
-                .frame(width: 16)
-            
-            Button(action: {
-                openWithPresented.toggle()
-            }) {
-                Text("Open with")
-            }
-            .fileImporter(
-                isPresented: $openWithPresented,
-                allowedContentTypes: [.application]
-            ) {
-                if case .success(let url) = $0 {
-                    let appHost: String
-
-                    if host.isEmpty {
-                        appHost = ""
-                    } else {
-                        let hostUrl = if host.starts(with: /https?:\/\//) {
-                            host
-                        } else {
-                            "http://" + host
-                        }
-                        appHost = URL(string: hostUrl)!.host()!
-                    }
-
-                    apps.append(
-                        App(
-                            host: appHost,
-                            schemeOverride: "",
-                            app: url
-                        )
-                    )
-                    host = ""
-                }
-            }
-            .disabled(!hostValid)
-        }
-        .padding(10)
-    }
-}
-
-struct AppItem: View {
-    @Binding var app: App
     @AppStorage("browserNames") private var names: [String: String] = [:]
-    @State private var editPresented = false
 
     var body: some View {
         let bundle = Bundle(url: app.app)
 
-        HStack {
-            Button(action: {
-                editPresented.toggle()
-            }) {
-                Label(
-                    app.host.isEmpty ? "*" : app.host,
-                    systemImage: "pencil"
-                )
-                .font(
-                    .system(size: 14)
-                )
-                .foregroundStyle(.primary)
+        HStack(spacing: 10) {
+            IconButton(systemImage: "pencil", help: "Edit host, app and scheme", action: edit)
+
+            Button(action: edit) {
+                Text(app.host.isEmpty ? "All links" : app.host)
+                    .foregroundStyle(app.host.isEmpty ? .secondary : .primary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
 
-            Spacer()
+            Image(systemName: "arrow.right")
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(.tertiary)
 
+            if bundle != nil {
+                BrowserTargetIcon(target: app.target, badgeSize: 8)
+                    .frame(width: 20, height: 20)
+            } else {
+                Image(systemName: "questionmark.app.dashed")
+                    .foregroundStyle(.secondary)
+                    .frame(width: 20, height: 20)
+            }
 
             Text(bundle == nil
                  ? "\(app.app.appDisplayName) (not installed)"
                  : app.target.displayName(using: names))
-                .font(
-                    .system(size: 14)
-                )
                 .foregroundStyle(
                     bundle == nil || app.target.hasMissingProfile ? .secondary : .primary
                 )
+                .lineLimit(1)
 
-
-            Spacer()
-                .frame(width: 32)
+            if !app.schemeOverride.isEmpty {
+                Text("\(app.schemeOverride):")
+                    .font(.caption.monospaced())
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(Capsule().fill(Color.primary.opacity(0.06)))
+                    .help("Opens links with the \(app.schemeOverride): scheme")
+            }
 
             if let browserId = bundle?.bundleIdentifier {
                 ShortcutButton(
                     shortcutKey: app.target.shortcutKey(bundleIdentifier: browserId)
                 )
             }
-
-            Spacer()
-                .frame(width: 8)
-
-            if bundle != nil {
-                BrowserTargetIcon(target: app.target)
-                    .frame(width: 32, height: 32)
-            } else {
-                Image(systemName: "questionmark.app.dashed")
-                    .font(.system(size: 24))
-                    .foregroundStyle(.secondary)
-                    .frame(width: 32, height: 32)
-            }
         }
-        .padding(10)
-        .sheet(isPresented: $editPresented) {
-            EditAppForm(
-                app: $app,
-                isPresented: $editPresented
-            )
-        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
     }
 }
 
 struct AppsTab: View {
     @AppStorage("apps") private var apps: [App] = []
-    
+
+    @State private var addPresented = false
+    @State private var editingIndex: Int?
+
     var body: some View {
-        VStack (alignment: .leading) {
-            List {
-                NewApp()
-                
-                ForEach(Array($apps.enumerated()), id: \.offset) { offset, app in
-                    AppItem(
-                        app: app
-                    )
+        VStack(alignment: .leading, spacing: 12) {
+            ScrollView {
+                if apps.isEmpty {
+                    Text("No apps yet. Click + to open a host's links in an app, such as zoom.us in Zoom.")
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                        .frame(maxWidth: .infinity)
+                        .padding(24)
+                } else {
+                    SettingsCard {
+                        ForEach(Array(apps.enumerated()), id: \.offset) { index, app in
+                            if index > 0 {
+                                RowDivider(leadingInset: 46)
+                            }
+
+                            AppRow(app: app) {
+                                editingIndex = index
+                            }
+                        }
+                    }
                 }
             }
-            .scrollContentBackground(.hidden)
-            
-            Text("Type domain and choose app in which links will be opened")
-                .font(.subheadline)
-                .foregroundStyle(.primary.opacity(0.5))
-                .frame(maxWidth: .infinity)
+            .scrollEdgeEffectDisabledCompat()
+
+            ListBottomBar(hint: "A matching app joins the picker, or opens directly if set in General.") {
+                IconButton(systemImage: "plus", help: "Add an app for a host") {
+                    addPresented = true
+                }
+            }
         }
-        .padding(.bottom, 20)
+        .padding(20)
+        .sheet(isPresented: $addPresented) {
+            AppForm(
+                original: nil,
+                onCancel: { addPresented = false },
+                onSave: {
+                    apps.append($0)
+                    addPresented = false
+                }
+            )
+        }
+        .sheet(
+            isPresented: Binding(
+                get: { editingIndex != nil },
+                set: { if !$0 { editingIndex = nil } }
+            )
+        ) {
+            if let index = editingIndex, apps.indices.contains(index) {
+                AppForm(
+                    original: apps[index],
+                    onCancel: { editingIndex = nil },
+                    onSave: {
+                        apps[index] = $0
+                        editingIndex = nil
+                    },
+                    onDelete: {
+                        apps.remove(at: index)
+                        editingIndex = nil
+                    }
+                )
+            }
+        }
     }
 }
 

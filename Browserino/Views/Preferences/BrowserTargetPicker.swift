@@ -20,6 +20,21 @@ struct BrowserTargetPicker: View {
         app.map { BrowserTarget(app: $0, profile: profile) }
     }
 
+    /// macOS menus drop item icons, so two profiles called "misku" in different
+    /// browsers would read the same. Those get their browser's name added.
+    private func menuTitle(for target: BrowserTarget) -> String {
+        let title = target.displayName(using: names)
+        let sameTitle = browsers.filter { $0.displayName(using: names) == title }
+
+        guard sameTitle.count > 1, target.profile != nil else {
+            return title
+        }
+
+        let browser = Bundle(url: target.app)?.appDisplayName ?? target.app.appDisplayName
+
+        return "\(title) (\(browser))"
+    }
+
     var body: some View {
         Menu {
             ForEach(Array(browsers.enumerated()), id: \.offset) { _, target in
@@ -29,7 +44,7 @@ struct BrowserTargetPicker: View {
                 } label: {
                     // Two browsers can share a profile name, so the icon tells them apart.
                     Label {
-                        Text(target.displayName(using: names))
+                        Text(menuTitle(for: target))
                     } icon: {
                         Image(nsImage: target.smallIcon)
                     }
@@ -40,19 +55,20 @@ struct BrowserTargetPicker: View {
                 Divider()
             }
 
-            Button("Other Application…") {
+            Button("Other App…") {
                 otherPresented = true
             }
         } label: {
             if let selection {
+                // A pop-up button lays its label out at its own size, so the icon
+                // has to arrive already sized.
                 HStack {
-                    BrowserTargetIcon(target: selection, badgeSize: 8)
-                        .frame(width: 16, height: 16)
+                    Image(nsImage: selection.smallIcon)
 
                     Text(
                         Bundle(url: selection.app) == nil
                             ? "\(selection.app.appDisplayName) (not installed)"
-                            : selection.displayName(using: names)
+                            : menuTitle(for: selection)
                     )
                 }
             } else {

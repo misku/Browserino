@@ -218,7 +218,7 @@ struct PromptView: View {
                     KeyEquivalent("c"),
                     modifiers: alternativeShortcut ? [.command] : [.command, .option]
                 )
-                .toolTip(urls.first?.absoluteString ?? "")
+                .help(urls.first?.absoluteString ?? "")
             }
         }
         .padding(12)

@@ -8,40 +8,38 @@
 import SwiftUI
 
 struct AboutTab: View {
+    private var version: String {
+        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown"
+    }
+
     var body: some View {
-        VStack {
+        VStack(spacing: 12) {
             Spacer()
-            
+
             Image(nsImage: NSWorkspace.shared.icon(forFile: Bundle.main.bundlePath))
                 .resizable()
-                .frame(width: 128, height: 128)
-            
-            Text(
-                "Browserino v\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as! String)"
-            )
-            .font(.title)
-            .frame(maxWidth: .infinity)
-            
-            Spacer()
-                .frame(height: 16)
-            
-            Button(action: {
-                NSWorkspace.shared.open(
-                    URL(string: "https://github.com/AlexStrNik/Browserino/")!
-                )
-            }) {
-                Text("https://github.com/AlexStrNik/Browserino/")
-            }
-            .buttonStyle(.link)
-            
-            Spacer()
-                .frame(height: 16)
-            
-            Text("Thanks to @byt3m4st3r, @mihado, @ventz and others for contributions!")
+                .frame(width: 96, height: 96)
+
+            Text("Browserino")
+                .font(.title2.weight(.semibold))
+
+            Text("Version \(version)")
                 .foregroundStyle(.secondary)
-            
+
+            Link("Browserino on GitHub", destination: URL(string: "https://github.com/AlexStrNik/Browserino/")!)
+                .help("Open the project page in your browser")
+
+            Text("Thanks to @byt3m4st3r, @mihado, @ventz and others for contributions!")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.top, 8)
+
             Spacer()
         }
+        .frame(maxWidth: 360)
+        .frame(maxWidth: .infinity)
+        .padding(20)
     }
 }
 
