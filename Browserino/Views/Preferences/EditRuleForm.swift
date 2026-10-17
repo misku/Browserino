@@ -33,17 +33,23 @@ struct RuleForm: View {
         portText.trimmingCharacters(in: .whitespaces).isEmpty || parsedPort != nil
     }
 
+    /// A space before or after a pattern is invisible in the field and would
+    /// make the rule miss every link, so it never reaches the rule.
+    private var pattern: String {
+        regex.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
     private var patternIsEmpty: Bool {
-        regex.trimmingCharacters(in: .whitespaces).isEmpty
+        pattern.isEmpty
     }
 
     private var canSave: Bool {
-        !patternIsEmpty && Rule.compile(regex) != nil && portIsValid
+        !patternIsEmpty && Rule.compile(pattern) != nil && portIsValid
     }
 
     /// Each test link and whether this rule, port included, would take it.
     private var testResults: [(link: String, matches: Bool)] {
-        let rule = Rule(regex: regex, targets: [], port: parsedPort)
+        let rule = Rule(regex: pattern, targets: [], port: parsedPort)
 
         return testUrls
             .split(separator: "\n")
@@ -65,7 +71,7 @@ struct RuleForm: View {
                     TextField("Pattern", text: $regex, prompt: Text("github\\.com/myorg"))
                         .font(.body.monospaced())
 
-                    if !patternIsEmpty && Rule.compile(regex) == nil {
+                    if !patternIsEmpty && Rule.compile(pattern) == nil {
                         Label("Not a valid regular expression.", systemImage: "exclamationmark.triangle.fill")
                             .font(.callout)
                             .foregroundStyle(.red)
@@ -140,7 +146,7 @@ struct RuleForm: View {
                         return
                     }
 
-                    onSave(regex, parsedPort)
+                    onSave(pattern, parsedPort)
                 }
                 .keyboardShortcut(.defaultAction)
                 .disabled(!canSave)

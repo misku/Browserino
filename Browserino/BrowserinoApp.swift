@@ -11,7 +11,10 @@ import Foundation
 /// Toolbar-style Settings, the macOS convention for a multi-pane settings
 /// window. It reopens on the pane last used.
 final class SettingsTabViewController: NSTabViewController {
-    @AppStorage("settingsTab") private var lastPane: Int = 0
+    private var lastPane: Int {
+        get { UserDefaults.standard.integer(forKey: "settingsTab") }
+        set { UserDefaults.standard.set(newValue, forKey: "settingsTab") }
+    }
 
     init() {
         super.init(nibName: nil, bundle: nil)
@@ -55,15 +58,17 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var selectorWindow: BrowserinoWindow?
     private var preferencesWindow: NSWindow?
     
-    @AppStorage("rules") private var rules: [Rule] = []
-    @AppStorage("browsers") private var browsers: [BrowserTarget] = []
-    @AppStorage("hiddenBrowsers") private var hiddenBrowsers: [BrowserTarget] = []
-    @AppStorage("apps") private var apps: [App] = []
-    @AppStorage("apps_autoOpen") private var autoOpenApps: Bool = false
-    @AppStorage("catchallTargets") private var catchallTargets: [BrowserTarget] = []
-    @AppStorage("catchallIncognito") private var catchallIncognito: Bool = false
-    @AppStorage("showInMenuBar") private var showInMenuBar: Bool = true
-    @AppStorage("shortcuts") private var shortcuts: [String: String] = [:]
+    // Read on every use: a rule saved in Settings has to apply to the very
+    // next link, without relaunching.
+    @StoredDefault("rules") private var rules: [Rule] = []
+    @StoredDefault("browsers") private var browsers: [BrowserTarget] = []
+    @StoredDefault("hiddenBrowsers") private var hiddenBrowsers: [BrowserTarget] = []
+    @StoredDefault("apps") private var apps: [App] = []
+    @StoredFlag("apps_autoOpen") private var autoOpenApps: Bool = false
+    @StoredDefault("catchallTargets") private var catchallTargets: [BrowserTarget] = []
+    @StoredFlag("catchallIncognito") private var catchallIncognito: Bool = false
+    @StoredFlag("showInMenuBar") private var showInMenuBar: Bool = true
+    @StoredDefault("shortcuts") private var shortcuts: [String: String] = [:]
     
     var statusMenu: NSMenu!
     var statusBarItem: NSStatusItem!
@@ -130,7 +135,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             // thread, so hop rather than assuming isolation.
             Task { @MainActor in
                 setupStatusBar()
-                NSApp.setActivationPolicy(.accessory)
+
+                // While Settings is open the app stays regular, so the window
+                // keeps its Dock icon and Cmd-Tab entry.
+                if preferencesWindow?.isVisible != true {
+                    NSApp.setActivationPolicy(.accessory)
+                }
             }
         }
     }

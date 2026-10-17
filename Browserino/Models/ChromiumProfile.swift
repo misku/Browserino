@@ -51,7 +51,7 @@ enum ChromiumProfileService {
     /// macOS treats a browser's user data as private to that browser, so reading it
     /// is refused until the user points at the folder themselves. The bookmark from
     /// that choice is what carries the permission across launches.
-    @AppStorage("browserDataAccess") private static var bookmarks: [String: Data] = [:]
+    @StoredDefault("browserDataAccess") private static var bookmarks: [String: Data] = [:]
 
     @discardableResult
     static func requestAccess(forAppAt app: URL) -> Bool {

@@ -10,11 +10,13 @@ import SwiftUI
 
 @MainActor
 class BrowserUtil {
-    @AppStorage("directories") private static var directories: [Directory] = []
-    @AppStorage("privateArgs") private static var privateArgs: [String: String] = [:]
-    @AppStorage("shortcuts") private static var shortcuts: [String: String] = [:]
-    @AppStorage("browserNames") private static var names: [String: String] = [:]
-    @AppStorage("hiddenBrowsers") private static var hiddenBrowsers: [BrowserTarget] = []
+    // Read on every use, so a private flag or search folder set in Settings
+    // applies at once.
+    @StoredDefault("directories") private static var directories: [Directory] = []
+    @StoredDefault("privateArgs") private static var privateArgs: [String: String] = [:]
+    @StoredDefault("shortcuts") private static var shortcuts: [String: String] = [:]
+    @StoredDefault("browserNames") private static var names: [String: String] = [:]
+    @StoredDefault("hiddenBrowsers") private static var hiddenBrowsers: [BrowserTarget] = []
 
     static func loadBrowsers(
         oldBrowsers: [BrowserTarget]
