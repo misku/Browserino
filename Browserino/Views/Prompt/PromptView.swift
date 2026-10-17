@@ -95,12 +95,17 @@ struct PromptView: View {
     }
 
     var body: some View {
-        VStack {
+        // Every row and key handler indexes these two lists; computing them once
+        // per redraw keeps a long list responsive while arrowing through it.
+        let appList = appsForUrls
+        let browserList = visibleBrowsers
+
+        VStack(spacing: 8) {
             ScrollViewReader { scrollViewProxy in
                 ScrollView {
                     VStack(alignment: .leading, spacing: 2) {
-                        if !appsForUrls.isEmpty && appsAtTop {
-                            ForEach(Array(appsForUrls.enumerated()), id: \.offset) { index, app in
+                        if !appList.isEmpty && appsAtTop {
+                            ForEach(Array(appList.enumerated()), id: \.offset) { index, app in
                                 PromptItem(
                                     target: app.target,
                                     title: app.target.displayName,
@@ -119,7 +124,7 @@ struct PromptView: View {
                             Divider()
                         }
                         
-                        ForEach(Array(visibleBrowsers.enumerated()), id: \.offset) {
+                        ForEach(Array(browserList.enumerated()), id: \.offset) {
                             index, browser in
                             PromptItem(
                                 target: browser,
@@ -132,18 +137,18 @@ struct PromptView: View {
                                     isIncognito: isIncognito != NSEvent.modifierFlags.contains(.shift)
                                 )
                             }
-                            .id(index + (appsAtTop ? appsForUrls.count : 0))
+                            .id(index + (appsAtTop ? appList.count : 0))
                             .buttonStyle(
                                 SelectButtonStyle(
-                                    selected: selected == index + (appsAtTop ? appsForUrls.count : 0)
+                                    selected: selected == index + (appsAtTop ? appList.count : 0)
                                 )
                             )
                         }
 
-                        if !appsForUrls.isEmpty && !appsAtTop {
+                        if !appList.isEmpty && !appsAtTop {
                             Divider()
 
-                            ForEach(Array(appsForUrls.enumerated()), id: \.offset) { index, app in
+                            ForEach(Array(appList.enumerated()), id: \.offset) { index, app in
                                 PromptItem(
                                     target: app.target,
                                     title: app.target.displayName,
@@ -151,10 +156,10 @@ struct PromptView: View {
                                 ) {
                                     openUrlsInApp(app: app)
                                 }
-                                .id(visibleBrowsers.count + index)
+                                .id(browserList.count + index)
                                 .buttonStyle(
                                     SelectButtonStyle(
-                                        selected: selected == visibleBrowsers.count + index
+                                        selected: selected == browserList.count + index
                                     )
                                 )
                             }
@@ -169,7 +174,7 @@ struct PromptView: View {
                         selected = max(0, selected - 1)
                         scrollViewProxy.scrollTo(selected, anchor: .center)
                     } else if command == .down {
-                        selected = max(0, min(visibleBrowsers.count + appsForUrls.count - 1, selected + 1))
+                        selected = max(0, min(browserList.count + appList.count - 1, selected + 1))
                         scrollViewProxy.scrollTo(selected, anchor: .center)
                     }
                 }
@@ -203,27 +208,40 @@ struct PromptView: View {
 
             Divider()
 
-            if let host = urls.first?.host() {
-                Button(action: {
-                    let pasteboard = NSPasteboard.general
-                    pasteboard.declareTypes([.string], owner: nil)
-                    pasteboard.setString(urls.first?.absoluteString ?? "", forType: .string)
-
-                    if closeAfterCopy {
-                        NSApplication.shared.keyWindow?.close()
-                    }
-                }) {
-                    Text(
-                        host
-                    )
+            HStack(spacing: 6) {
+                if isIncognito {
+                    Image(systemName: "hand.raised.fill")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(Color.accentColor)
+                        .help("This rule opens a private window. Hold Shift for a normal one.")
+                        .accessibilityLabel("Private window")
                 }
-                .buttonStyle(.plain)
-                .keyboardShortcut(
-                    KeyEquivalent("c"),
-                    modifiers: alternativeShortcut ? [.command] : [.command, .option]
-                )
-                .help(urls.first?.absoluteString ?? "")
+
+                if let host = urls.first?.host() {
+                    Button(action: {
+                        let pasteboard = NSPasteboard.general
+                        pasteboard.declareTypes([.string], owner: nil)
+                        pasteboard.setString(urls.first?.absoluteString ?? "", forType: .string)
+
+                        if closeAfterCopy {
+                            NSApplication.shared.keyWindow?.close()
+                        }
+                    }) {
+                        Text(host)
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    }
+                    .buttonStyle(.plain)
+                    .keyboardShortcut(
+                        KeyEquivalent("c"),
+                        modifiers: alternativeShortcut ? [.command] : [.command, .option]
+                    )
+                    .help("\(urls.first?.absoluteString ?? "")\nClick or press \(alternativeShortcut ? "⌘C" : "⌥⌘C") to copy the link.")
+                }
             }
+            .frame(maxWidth: .infinity)
         }
         .padding(12)
         .frame(

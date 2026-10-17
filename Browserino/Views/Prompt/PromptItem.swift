@@ -21,33 +21,34 @@ struct PromptItem: View {
 
     var body: some View {
         Button(action: action) {
-            HStack {
+            HStack(spacing: 10) {
                 Text(title)
-                    .font(
-                        .system(size: 12, weight: .bold)
-                    )
-                
-                Spacer()
-                
+                    .font(.system(size: 13, weight: .medium))
+                    .lineLimit(1)
+
+                Spacer(minLength: 8)
+
                 if let shortcut, keyEquivalent != nil {
+                    // Drawn like a key on the keyboard, which is what it is.
                     Text(shortcut)
-                        .font(.caption)
-                        .frame(minWidth: 4)
-                        .opacity(0.5)
-                        .padding(5)
-                        .background(
-                            Color.secondary.opacity(0.2)
-                        )
-                        .cornerRadius(4)
+                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                        .frame(minWidth: 18, minHeight: 18)
+                        .background {
+                            RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                .fill(Color.primary.opacity(0.08))
+                        }
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                .strokeBorder(Color.primary.opacity(0.15))
+                        }
+                        .opacity(0.8)
                 }
-                
-                Spacer()
-                    .frame(width: 8)
-                
-                BrowserTargetIcon(target: target, badgeSize: 11)
-                    .frame(width: 24, height: 24)
+
+                BrowserTargetIcon(target: target, badgeSize: 10)
+                    .frame(width: 22, height: 22)
             }
-            .padding(8)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 6)
         }
         .if(keyEquivalent != nil) {
             return $0.keyboardShortcut(
