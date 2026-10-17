@@ -42,36 +42,49 @@ struct AppForm: View {
         normalizedHost != nil && appURL != nil
     }
 
+    /// A caption over a field, the way the rest of the sheet labels things.
+    private func label(_ text: String) -> some View {
+        Text(text)
+            .font(.subheadline.weight(.medium))
+            .foregroundStyle(.secondary)
+    }
+
     var body: some View {
-        VStack(spacing: 0) {
-            Form {
-                Section {
-                    TextField("Host", text: $host, prompt: Text("example.com"))
+        VStack(alignment: .leading, spacing: 16) {
+            Text(original == nil ? "New App" : "Edit App")
+                .font(.headline)
 
-                    LabeledContent("Open in") {
-                        BrowserTargetPicker(app: $appURL, profile: $profile)
-                    }
-                } header: {
-                    Text(original == nil ? "New App" : "Edit App")
-                        .font(.headline)
-                } footer: {
-                    Text("Leave the host empty to offer the app for every link.")
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                }
+            VStack(alignment: .leading, spacing: 6) {
+                label("Host")
 
-                Section {
-                    TextField("Replace scheme", text: $schemeOverride, prompt: Text("zoommtg"))
-                        .font(.body.monospaced())
-                } header: {
-                    Text("Advanced")
-                } footer: {
-                    Text("For apps that register their own scheme: the link opens with it instead of http or https.")
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                }
+                TextField("Host", text: $host, prompt: Text("example.com"))
+                    .textFieldStyle(.roundedBorder)
+                    .labelsHidden()
+
+                Text("Leave it empty to offer the app for every link.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
-            .formStyle(.grouped)
+
+            VStack(alignment: .leading, spacing: 6) {
+                label("Open in")
+
+                BrowserTargetList(app: $appURL, profile: $profile)
+                    .frame(maxHeight: .infinity)
+            }
+
+            VStack(alignment: .leading, spacing: 6) {
+                label("Replace scheme")
+
+                TextField("Replace scheme", text: $schemeOverride, prompt: Text("zoommtg"))
+                    .textFieldStyle(.roundedBorder)
+                    .font(.body.monospaced())
+                    .labelsHidden()
+
+                Text("For apps that register their own scheme: the link opens with it instead of http or https.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
 
             HStack {
                 if onDelete != nil {
@@ -102,9 +115,10 @@ struct AppForm: View {
                 .keyboardShortcut(.defaultAction)
                 .disabled(!canSave)
             }
-            .padding(20)
+            .padding(.top, 4)
         }
-        .frame(width: 480, height: 360)
+        .padding(20)
+        .frame(width: 500, height: 620)
         .confirmationDialog(
             "Delete this app?",
             isPresented: $confirmDelete

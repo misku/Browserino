@@ -5,14 +5,85 @@
 
 import SwiftUI
 
-/// Picks the browser a rule or site mapping opens in, from the list already set up
-/// under Browsers — profiles included, so a profile needs no second control.
-/// Anything not in that list is still reachable through "Other Application".
-struct BrowserTargetPicker: View {
+/// One row of BrowserTargetList.
+private struct BrowserListRow: View {
+    let target: BrowserTarget
+    let number: Int?
+    let name: String
+    let isSelected: Bool
+    let isHidden: Bool
+    let select: () -> Void
+
+    @State private var isHovered = false
+
+    var body: some View {
+        let isInstalled = Bundle(url: target.app) != nil
+
+        Button(action: select) {
+            HStack(spacing: 10) {
+                Text(number.map(String.init) ?? "?")
+                    .font(.callout.monospacedDigit())
+                    .foregroundStyle(.secondary)
+                    .frame(width: 22, alignment: .trailing)
+
+                if isInstalled {
+                    BrowserTargetIcon(target: target, badgeSize: 12)
+                        .frame(width: 32, height: 32)
+                } else {
+                    Image(systemName: "questionmark.app.dashed")
+                        .font(.system(size: 22))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 32, height: 32)
+                }
+
+                Text(name)
+                    .lineLimit(1)
+                    .foregroundStyle(isHidden || !isInstalled ? .secondary : .primary)
+
+                if isHidden {
+                    Image(systemName: "eye.slash")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.tertiary)
+                        .help("Hidden from the picker")
+                }
+
+                Spacer(minLength: 8)
+
+                if isSelected {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(Color.accentColor)
+                }
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background {
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(
+                        isSelected ? Color.accentColor.opacity(0.15)
+                            : Color.primary.opacity(isHovered ? 0.05 : 0)
+                    )
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovered = $0 }
+        .accessibilityLabel(name)
+        .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
+    }
+}
+
+/// Picks the browser an App opens in, from the list set up under Browsers,
+/// profiles included, in that list's order and with its numbers. A list rather
+/// than a menu: menus drop the icons and avatars that tell same-named profiles
+/// apart, and a long menu is hard to scan. Anything not in the list is still
+/// reachable through Other App.
+struct BrowserTargetList: View {
     @Binding var app: URL?
     @Binding var profile: String?
 
     @AppStorage("browsers") private var browsers: [BrowserTarget] = []
+    @AppStorage("hiddenBrowsers") private var hiddenBrowsers: [BrowserTarget] = []
     @AppStorage("browserNames") private var names: [String: String] = [:]
     @State private var otherPresented = false
 
@@ -20,60 +91,92 @@ struct BrowserTargetPicker: View {
         app.map { BrowserTarget(app: $0, profile: profile) }
     }
 
-    /// macOS menus drop item icons, so two profiles called "misku" in different
-    /// browsers would read the same. Those get their browser's name added.
-    private func menuTitle(for target: BrowserTarget) -> String {
-        let title = target.displayName(using: names)
-        let sameTitle = browsers.filter { $0.displayName(using: names) == title }
+    /// Two Chrome profiles can both be called "misku". Their numbers already
+    /// differ; the profile folder makes the names differ too.
+    private func name(for target: BrowserTarget) -> String {
+        guard Bundle(url: target.app) != nil else {
+            return "\(target.app.appDisplayName) (not installed)"
+        }
 
-        guard sameTitle.count > 1, target.profile != nil else {
-            return title
+        let name = target.displayName(using: names)
+        let sameName = browsers.filter { $0 != target && $0.displayName(using: names) == name }
+
+        guard !sameName.isEmpty, let directory = target.profile else {
+            return name
         }
 
         let browser = Bundle(url: target.app)?.appDisplayName ?? target.app.appDisplayName
 
-        return "\(title) (\(browser))"
+        return sameName.contains { $0.app == target.app }
+            ? "\(name) (\(browser), \(directory))"
+            : "\(name) (\(browser))"
+    }
+
+    private func row(_ target: BrowserTarget, number: Int?) -> some View {
+        BrowserListRow(
+            target: target,
+            number: number,
+            name: name(for: target),
+            isSelected: target == selection,
+            isHidden: hiddenBrowsers.contains(target),
+            select: {
+                app = target.app
+                profile = target.profile
+            }
+        )
+        .id(target)
     }
 
     var body: some View {
-        Menu {
-            ForEach(Array(browsers.enumerated()), id: \.offset) { _, target in
-                Button {
-                    app = target.app
-                    profile = target.profile
-                } label: {
-                    // Two browsers can share a profile name, so the icon tells them apart.
-                    Label {
-                        Text(menuTitle(for: target))
-                    } icon: {
-                        Image(nsImage: target.smallIcon)
+        VStack(spacing: 0) {
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(spacing: 2) {
+                        ForEach(Array(browsers.enumerated()), id: \.element) { index, target in
+                            row(target, number: index + 1)
+                        }
+
+                        // An app chosen through Other App stays visible and selected.
+                        if let selection, !browsers.contains(selection) {
+                            row(selection, number: nil)
+                        }
+                    }
+                    .padding(6)
+                }
+                .onAppear {
+                    if let selection {
+                        proxy.scrollTo(selection, anchor: .center)
                     }
                 }
             }
 
-            if !browsers.isEmpty {
-                Divider()
-            }
+            Divider()
 
-            Button("Other App…") {
-                otherPresented = true
-            }
-        } label: {
-            if let selection {
-                // A pop-up button lays its label out at its own size, so the icon
-                // has to arrive already sized.
-                HStack {
-                    Image(nsImage: selection.smallIcon)
-
-                    Text(
-                        Bundle(url: selection.app) == nil
-                            ? "\(selection.app.appDisplayName) (not installed)"
-                            : menuTitle(for: selection)
-                    )
+            HStack {
+                Button("Other App…") {
+                    otherPresented = true
                 }
-            } else {
-                Text("Choose a browser")
+                .help("Open these links in an app that isn't in the Browsers list")
+
+                Spacer(minLength: 12)
+
+                Text(selection.map { name(for: $0) } ?? "Choose a browser")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
             }
+            .padding(8)
+        }
+        .background {
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(Color.primary.opacity(0.04))
+                .allowsHitTesting(false)
+        }
+        .overlay {
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .strokeBorder(Color.primary.opacity(0.08))
+                .allowsHitTesting(false)
         }
         .fileImporter(
             isPresented: $otherPresented,
