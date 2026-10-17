@@ -39,6 +39,15 @@ enum ChromiumProfileService {
     private static var cache: [URL: (modified: Date, profiles: [ChromiumProfile])] = [:]
     private static var avatarImages: [URL: NSImage] = [:]
 
+    /// One redraw asks for the same browser's profiles many times (name, icon
+    /// badge, missing-profile check), and every answer resolves a
+    /// security-scoped bookmark and touches the disk. Answers younger than this
+    /// are reused, which is still fresh enough to notice a profile added in the
+    /// browser a moment ago.
+    private static let memoLifetime: TimeInterval = 2
+    private static var recentProfiles: [URL: (time: Date, profiles: [ChromiumProfile]?)] = [:]
+    private static var recentDirectories: [URL: (time: Date, root: URL?)] = [:]
+
     /// macOS treats a browser's user data as private to that browser, so reading it
     /// is refused until the user points at the folder themselves. The bookmark from
     /// that choice is what carries the permission across launches.
@@ -74,6 +83,7 @@ enum ChromiumProfileService {
 
         bookmarks[root.path] = data
         cache[app] = nil
+        recentProfiles[app] = nil
 
         return true
     }
@@ -160,6 +170,17 @@ enum ChromiumProfileService {
 
     /// nil when the app is not a Chromium browser.
     static func userDataDirectory(forAppAt app: URL) -> URL? {
+        if let recent = recentDirectories[app], -recent.time.timeIntervalSinceNow < memoLifetime {
+            return recent.root
+        }
+
+        let root = findUserDataDirectory(forAppAt: app)
+        recentDirectories[app] = (Date(), root)
+
+        return root
+    }
+
+    private static func findUserDataDirectory(forAppAt app: URL) -> URL? {
         guard let bundle = Bundle(url: app) else {
             return nil
         }
@@ -196,13 +217,18 @@ enum ChromiumProfileService {
     /// collapse that into "no profiles", or a transient failure deletes rows the
     /// user has ordered, hidden and assigned shortcuts to.
     static func profiles(forAppAt app: URL) -> [ChromiumProfile]? {
-        guard let root = userDataDirectory(forAppAt: app) else {
-            return nil
+        if let recent = recentProfiles[app], -recent.time.timeIntervalSinceNow < memoLifetime {
+            return recent.profiles
         }
 
-        return withAccess(to: root) {
-            readProfiles(forAppAt: app, root: root)
+        let profiles = userDataDirectory(forAppAt: app).flatMap { root in
+            withAccess(to: root) {
+                readProfiles(forAppAt: app, root: root)
+            }
         }
+        recentProfiles[app] = (Date(), profiles)
+
+        return profiles
     }
 
     private static func readProfiles(forAppAt app: URL, root: URL) -> [ChromiumProfile]? {

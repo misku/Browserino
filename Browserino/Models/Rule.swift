@@ -38,12 +38,32 @@ struct Rule: Hashable, Codable {
         return Rule.effectivePort(of: url) == port
     }
 
+    /// Compiling a pattern costs far more than matching it, and the Rules tab
+    /// asks for every rule on each redraw.
+    @MainActor private static var compiled: [String: Regex<AnyRegexOutput>] = [:]
+    @MainActor private static var invalid: Set<String> = []
+
     /// Compiled the way links are matched, so the Rules tab and the router agree.
-    var compiledRegex: Regex<AnyRegexOutput>? {
-        try? Regex(regex).ignoresCase()
+    @MainActor var compiledRegex: Regex<AnyRegexOutput>? {
+        if let cached = Rule.compiled[regex] {
+            return cached
+        }
+
+        if Rule.invalid.contains(regex) {
+            return nil
+        }
+
+        guard let compiled = try? Regex(regex).ignoresCase() else {
+            Rule.invalid.insert(regex)
+            return nil
+        }
+
+        Rule.compiled[regex] = compiled
+
+        return compiled
     }
 
-    func matches(_ url: URL) -> Bool {
+    @MainActor func matches(_ url: URL) -> Bool {
         guard let compiledRegex else {
             return false
         }
@@ -53,7 +73,7 @@ struct Rule: Hashable, Codable {
 
     /// A rule for any port whose regex takes both of these unrelated links,
     /// such as ".*", catches every link, so no rule below it is ever reached.
-    var matchesEveryLink: Bool {
+    @MainActor var matchesEveryLink: Bool {
         guard port == nil, let compiledRegex else {
             return false
         }

@@ -117,14 +117,31 @@ extension BrowserTarget {
         return defaultName
     }
 
+    /// NSWorkspace builds a new image on every call, and rows ask on every
+    /// redraw, which also makes SwiftUI treat the icon as changed each time.
+    private static var icons: [URL: NSImage] = [:]
+    private static var smallIcons: [URL: NSImage] = [:]
+
     var icon: NSImage {
-        NSWorkspace.shared.icon(forFile: app.path)
+        if let cached = Self.icons[app] {
+            return cached
+        }
+
+        let image = NSWorkspace.shared.icon(forFile: app.path)
+        Self.icons[app] = image
+
+        return image
     }
 
     /// Menus draw an image at its own size, so it has to be sized before use.
     var smallIcon: NSImage {
+        if let cached = Self.smallIcons[app] {
+            return cached
+        }
+
         let image = icon.copy() as! NSImage
         image.size = NSSize(width: 16, height: 16)
+        Self.smallIcons[app] = image
 
         return image
     }
