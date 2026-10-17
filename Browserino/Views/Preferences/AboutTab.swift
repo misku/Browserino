@@ -29,8 +29,10 @@ struct AboutTab: View {
             Link("Browserino on GitHub", destination: URL(string: "https://github.com/AlexStrNik/Browserino/")!)
                 .help("Open the original project page in your browser")
 
-            Link("Fork created by @misku", destination: URL(string: "https://github.com/misku/Browserino")!)
-                .help("Open this fork's project page in your browser")
+            // Markdown links make each part open its own page: "Fork" the
+            // repository, "@misku" the profile.
+            Text("[Fork](https://github.com/misku/Browserino) created by [@misku](https://github.com/misku)")
+                .help("Fork opens this fork's project page; @misku opens the author's GitHub profile")
 
             Text("Thanks to @AlexStrNik, who created Browserino, and to @matijazezelj, @xplorick, @byt3m4st3r, @mihado, @ventz, @sayre4ux, @mihai97ionita, @webcoyote, @simonswine and others for contributions!")
                 .font(.callout)
