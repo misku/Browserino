@@ -69,7 +69,7 @@ struct RuleForm: View {
         VStack(spacing: 0) {
             Form {
                 Section {
-                    TextField("Pattern", text: $regex, prompt: Text("github\\.com/myorg"))
+                    TextField("Regex Pattern", text: $regex, prompt: Text("github\\.com/myorg"))
                         .font(.body.monospaced())
 
                     if !patternIsEmpty && Rule.compile(pattern) == nil {
