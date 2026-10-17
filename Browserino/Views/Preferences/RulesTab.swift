@@ -173,6 +173,13 @@ private struct BrowserCheckbox: View {
     }
 }
 
+/// One checkbox of the browser list: a target and its number in the
+/// Browsers tab, nil when it isn't there.
+private struct ChooserEntry {
+    let target: BrowserTarget
+    let number: Int?
+}
+
 /// The checkbox grid under a row. It lists the whole Browsers tab in its
 /// order, hidden browsers included (a rule may route to a browser kept out of
 /// the picker), then anything the rule holds that the list doesn't.
@@ -224,19 +231,33 @@ private struct BrowserChooser: View {
         )
     }
 
-    var body: some View {
-        let columns = [GridItem(.adaptive(minimum: 210), spacing: 16, alignment: .leading)]
+    /// Numbers run down the first column, then down the second, so the list
+    /// reads in Browsers order like the Browsers tab instead of across rows.
+    private func twoColumns(_ entries: [ChooserEntry]) -> some View {
+        let split = (entries.count + 1) / 2
 
+        return HStack(alignment: .top, spacing: 16) {
+            column(Array(entries.prefix(split)))
+            column(Array(entries.dropFirst(split)))
+        }
+    }
+
+    private func column(_ entries: [ChooserEntry]) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ForEach(entries, id: \.target) { entry in
+                checkbox(entry.target, number: entry.number)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text(heading)
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
 
-            LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
-                ForEach(Array(browsers.enumerated()), id: \.element) { index, browser in
-                    checkbox(browser, number: index + 1)
-                }
-            }
+            twoColumns(browsers.enumerated().map { ChooserEntry(target: $0.element, number: $0.offset + 1) })
 
             if !offList.isEmpty {
                 Text("Not in Browsers list")
@@ -244,11 +265,7 @@ private struct BrowserChooser: View {
                     .foregroundStyle(.secondary)
                     .padding(.top, 4)
 
-                LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
-                    ForEach(offList, id: \.self) { target in
-                        checkbox(target, number: nil)
-                    }
-                }
+                twoColumns(offList.map { ChooserEntry(target: $0, number: nil) })
             }
 
             HStack(alignment: .firstTextBaseline) {
