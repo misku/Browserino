@@ -20,7 +20,7 @@ final class HoverBubble {
     private var owner: UUID?
     private var pending: DispatchWorkItem?
 
-    func show(_ text: String, for token: UUID) {
+    func show(_ content: AnyView, for token: UUID) {
         pending?.cancel()
         owner = token
 
@@ -30,7 +30,7 @@ final class HoverBubble {
                     return
                 }
 
-                self.present(text, near: NSEvent.mouseLocation)
+                self.present(content, near: NSEvent.mouseLocation)
             }
         }
         pending = work
@@ -51,7 +51,7 @@ final class HoverBubble {
 
     /// Below the pointer, clear of the cursor image; above it when the screen
     /// ends first.
-    private func present(_ text: String, near point: NSPoint) {
+    private func present(_ bubble: AnyView, near point: NSPoint) {
         guard let screen = NSScreen.screens.first(where: { NSMouseInRect(point, $0.frame, false) }) ?? NSScreen.main else {
             return
         }
@@ -60,7 +60,7 @@ final class HoverBubble {
         self.panel = panel
 
         let content = NSHostingView(
-            rootView: Text(text)
+            rootView: bubble
                 .font(.callout)
                 .monospacedDigit()
                 .fixedSize()
@@ -112,7 +112,7 @@ final class HoverBubble {
 /// Pure SwiftUI hover tracking: nothing is layered over the content, so it
 /// can't take a click meant for the view underneath.
 private struct HoverBubbleModifier: ViewModifier {
-    let text: String
+    let content: AnyView
 
     @State private var token = UUID()
 
@@ -120,7 +120,7 @@ private struct HoverBubbleModifier: ViewModifier {
         content
             .onHover { isInside in
                 if isInside {
-                    HoverBubble.shared.show(text, for: token)
+                    HoverBubble.shared.show(self.content, for: token)
                 } else {
                     HoverBubble.shared.hide(for: token)
                 }
@@ -136,6 +136,11 @@ extension View {
     /// Use .help for everything else: its short system delay keeps tooltips
     /// from flashing while the pointer crosses a row of buttons.
     func hoverBubble(_ text: String) -> some View {
-        modifier(HoverBubbleModifier(text: text))
+        hoverBubble { Text(text) }
+    }
+
+    /// The same bubble with any content, such as a table of browsers.
+    func hoverBubble<Bubble: View>(@ViewBuilder _ bubble: () -> Bubble) -> some View {
+        modifier(HoverBubbleModifier(content: AnyView(bubble())))
     }
 }

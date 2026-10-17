@@ -21,6 +21,8 @@ private struct TargetIcons: View {
     /// How many slots fit; the last becomes "+N" when there are more.
     let cap: Int
     let number: (BrowserTarget) -> Int?
+    let name: (BrowserTarget) -> String
+    /// The same names as plain text, for VoiceOver.
     let bubble: String
     let pickerText: String
     let action: () -> Void
@@ -77,7 +79,37 @@ private struct TargetIcons: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .hoverBubble(bubble)
+        .hoverBubble {
+            if targets.isEmpty {
+                Text(bubble)
+            } else {
+                // Numbers right-aligned in their own column, so the names line
+                // up like the rows of the Browsers tab.
+                Grid(alignment: .leading, horizontalSpacing: 8, verticalSpacing: 4) {
+                    ForEach(Array(targets.enumerated()), id: \.offset) { _, target in
+                        GridRow {
+                            Text(number(target).map(String.init) ?? "?")
+                                .foregroundStyle(.secondary)
+                                .gridColumnAlignment(.trailing)
+
+                            Group {
+                                if Bundle(url: target.app) != nil {
+                                    BrowserTargetIcon(target: target, badgeSize: 8)
+                                } else {
+                                    Image(systemName: "questionmark.app.dashed")
+                                        .resizable()
+                                        .scaledToFit()
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                            .frame(width: 21, height: 21)
+
+                            Text(name(target))
+                        }
+                    }
+                }
+            }
+        }
         .accessibilityLabel(bubble)
         .accessibilityHint("Shows the browser list")
     }
@@ -254,6 +286,7 @@ private struct RuleRow: View {
     let targets: [BrowserTarget]
     let iconCap: Int
     let number: (BrowserTarget) -> Int?
+    let name: (BrowserTarget) -> String
     let bubble: String
     let isIncognito: Bool
     let privateHelp: String
@@ -314,6 +347,7 @@ private struct RuleRow: View {
                     targets: targets,
                     cap: iconCap,
                     number: number,
+                    name: name,
                     bubble: bubble,
                     pickerText: "All browsers (picker)",
                     action: toggleExpanded
@@ -476,6 +510,7 @@ struct RulesTab: View {
             targets: rule.targets,
             iconCap: iconCap,
             number: number(of:),
+            name: name(of:),
             bubble: bubble(for: rule.targets),
             isIncognito: rule.isIncognito,
             privateHelp: privateHelp(for: rule.targets, isOn: rule.isIncognito, subject: "Matching links"),
@@ -510,6 +545,7 @@ struct RulesTab: View {
             targets: catchallTargets,
             iconCap: iconCap,
             number: number(of:),
+            name: name(of:),
             bubble: catchallTargets.isEmpty
                 ? "Shows the picker with all browsers."
                 : bubble(for: catchallTargets),
