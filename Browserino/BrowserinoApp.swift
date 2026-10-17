@@ -73,6 +73,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         
         UserDefaults.standard.addObserver(self, forKeyPath: "showInMenuBar", options: [.new], context: nil)
 
+        // Rules stored before they had ids get one now. Until it is saved,
+        // every read would invent a new id and rows would lose their state.
+        rules = rules
+
         // Earlier builds recorded Escape, Return and other keys the picker needs
         // for itself. Such a row showed a blank shortcut and could steal the key.
         let validShortcuts = shortcuts.filter { PickerShortcut.isValid($0.value) }
@@ -229,46 +233,91 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 }
             }
             
-            if let rule = rules.first(where: { $0.matches(processedUrls.first!) }) {
-                route(processedUrls, to: rule.targets, isIncognito: rule.isIncognito)
+            let link = processedUrls.first!
+
+            if let rule = rules.first(where: { $0.matches(link) }) {
+                if rule.showsPicker {
+                    // As if no rule existed, except that All Other Links
+                    // doesn't get the link.
+                    if !openAppDirectly(processedUrls) {
+                        showPicker(urls: processedUrls, isIncognito: rule.isIncognito)
+                    }
+                } else {
+                    route(processedUrls, to: rule.targets, isIncognito: rule.isIncognito)
+                }
                 return
             }
 
-            // Rules win. Then an App the picker would list for this link opens
-            // directly, but only one bound to a host: an App with an empty host
-            // matches every link and stays a picker entry.
-            if autoOpenApps, let app = apps.first(where: { app in
-                !app.host.isEmpty
-                    && processedUrls.first!.matchesHost(app.host)
-                    && !browsers.contains(app.target)
-                    && Bundle(url: app.app) != nil
-            }) {
-                BrowserUtil.openURL(
-                    app.urlsToOpen(processedUrls),
-                    target: app.target,
-                    isIncognito: false
+            if openAppDirectly(processedUrls) {
+                return
+            }
+
+            // All Other Links. With browsers chosen and an App matching the
+            // link, the App would otherwise be unreachable, so the picker shows
+            // both.
+            let catchall = installedInOrder(catchallTargets)
+
+            if catchall.isEmpty {
+                showPicker(urls: processedUrls, isIncognito: catchallIncognito)
+            } else if apps.contains(where: { matchesLink($0, processedUrls) }) {
+                showPicker(
+                    urls: processedUrls,
+                    targets: catchall,
+                    includeApps: true,
+                    isIncognito: catchallIncognito
                 )
-                return
+            } else {
+                route(processedUrls, to: catchall, isIncognito: catchallIncognito)
             }
-
-            // Whatever no rule or App took goes to Default catchall, which is
-            // the full picker until the user picks browsers for it.
-            route(processedUrls, to: catchallTargets, isIncognito: catchallIncognito)
             return
         }
 
         showPicker(urls: processedUrls)
     }
 
+    /// An App the picker would list for this link, installed and not also a
+    /// browser row.
+    private func matchesLink(_ app: App, _ urls: [URL]) -> Bool {
+        urls.contains { $0.matchesHost(app.host) }
+            && !browsers.contains(app.target)
+            && Bundle(url: app.app) != nil
+    }
+
+    /// The Apps auto-open step: an App bound to a host opens without the
+    /// picker when General allows it. An App with an empty host matches every
+    /// link and stays a picker entry.
+    private func openAppDirectly(_ urls: [URL]) -> Bool {
+        guard autoOpenApps,
+              let app = apps.first(where: { !$0.host.isEmpty && matchesLink($0, urls) })
+        else {
+            return false
+        }
+
+        BrowserUtil.openURL(
+            app.urlsToOpen(urls),
+            target: app.target,
+            isIncognito: false
+        )
+        return true
+    }
+
+    /// Installed targets, once each, in the Browsers tab order the picker uses.
+    private func installedInOrder(_ targets: [BrowserTarget]) -> [BrowserTarget] {
+        targets
+            .withoutDuplicates
+            .filter { Bundle(url: $0.app) != nil }
+            .ordered(like: browsers)
+    }
+
     /// One installed browser opens the link directly and several show the
     /// picker with only those. With none installed the link would otherwise
     /// go nowhere, so the full picker shows instead.
     private func route(_ urls: [URL], to targets: [BrowserTarget], isIncognito: Bool) {
-        let installed = targets.withoutDuplicates.filter { Bundle(url: $0.app) != nil }
+        let installed = installedInOrder(targets)
 
         switch installed.count {
         case 0:
-            showPicker(urls: urls)
+            showPicker(urls: urls, isIncognito: isIncognito)
         case 1:
             BrowserUtil.openURL(urls, target: installed[0], isIncognito: isIncognito)
         default:
@@ -276,10 +325,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
     }
 
-    /// `targets` limits the picker to those browsers, in that order.
+    /// `targets` limits the picker to those browsers, in that order, and drops
+    /// the Apps unless `includeApps` keeps them.
     private func showPicker(
         urls: [URL],
         targets: [BrowserTarget]? = nil,
+        includeApps: Bool = false,
         isIncognito: Bool = false
     ) {
         // A picker with no rows can only be dismissed. General's Reset empties
@@ -331,6 +382,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             rootView: PromptView(
                 urls: urls,
                 targets: targets,
+                includeApps: includeApps,
                 isIncognito: isIncognito
             )
         )

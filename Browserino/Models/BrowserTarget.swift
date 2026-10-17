@@ -54,6 +54,23 @@ extension Array where Element == BrowserTarget {
         var seen = Set<BrowserTarget>()
         return filter { seen.insert($0).inserted }
     }
+
+    /// The Browsers tab order, which is also the picker's. Targets missing from
+    /// that list keep their own order after the rest.
+    func ordered(like browsers: [BrowserTarget]) -> [BrowserTarget] {
+        let positions = Dictionary(
+            browsers.enumerated().map { ($0.element, $0.offset) },
+            uniquingKeysWith: { first, _ in first }
+        )
+
+        return enumerated()
+            .sorted { lhs, rhs in
+                let left = positions[lhs.element] ?? Int.max
+                let right = positions[rhs.element] ?? Int.max
+                return left != right ? left < right : lhs.offset < rhs.offset
+            }
+            .map(\.element)
+    }
 }
 
 @MainActor

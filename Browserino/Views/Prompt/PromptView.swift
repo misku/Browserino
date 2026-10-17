@@ -19,10 +19,14 @@ struct PromptView: View {
     @AppStorage("apps_atTop") private var appsAtTop: Bool = true
 
     let urls: [URL]
-    /// Set when a rule or Default catchall names several browsers: the picker
-    /// then lists exactly these, in this order, and no Apps.
+    /// Set when a rule or All Other Links names several browsers: the picker
+    /// then lists exactly these, in this order.
     var targets: [BrowserTarget]? = nil
+    /// Keeps matching Apps in a picker limited to `targets`. All Other Links
+    /// uses it so an App for the link stays reachable.
+    var includeApps: Bool = false
     /// The rule's private window setting, used by Return and by a click.
+    /// Shift does the opposite.
     var isIncognito: Bool = false
 
     @State private var opacityAnimation = 0.0
@@ -32,7 +36,7 @@ struct PromptView: View {
     // Return, the arrows and the shortcuts all index appsForUrls and
     // visibleBrowsers, so narrowing both here keeps them in step with the rows.
     var appsForUrls: [App] {
-        if targets != nil {
+        if targets != nil && !includeApps {
             return []
         }
 
@@ -125,7 +129,7 @@ struct PromptView: View {
                                 BrowserUtil.openURL(
                                     urls,
                                     target: browser,
-                                    isIncognito: isIncognito || NSEvent.modifierFlags.contains(.shift)
+                                    isIncognito: isIncognito != NSEvent.modifierFlags.contains(.shift)
                                 )
                             }
                             .id(index + (appsAtTop ? appsForUrls.count : 0))
@@ -177,7 +181,7 @@ struct PromptView: View {
                     .keyboardShortcut(.defaultAction)
 
                     Button(action: {
-                        openSelected(isIncognito: true)
+                        openSelected(isIncognito: !isIncognito)
                     }) {}
                     .opacity(0)
                     .keyboardShortcut(.return, modifiers: [.shift])

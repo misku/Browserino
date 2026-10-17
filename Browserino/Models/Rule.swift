@@ -7,15 +7,31 @@
 
 import Foundation
 
-struct Rule: Hashable, Codable {
+struct Rule: Hashable, Codable, Identifiable {
+    /// Rows follow their rule through a drag, so an open browser list stays
+    /// with its rule instead of with its position.
+    var id = UUID()
     var regex: String
-    /// One browser opens the link directly; several show the picker with only
-    /// these, in this order.
+    /// One installed browser opens the link directly; several show the picker
+    /// with only these. Empty shows the full picker, as if no rule matched,
+    /// but still stops All Other Links from taking the link.
     var targets: [BrowserTarget]
     /// When set, the link's port must match as well as the regex.
     var port: Int? = nil
     /// Opens the link with the browser's private argument.
     var isIncognito: Bool = false
+
+    var showsPicker: Bool {
+        targets.isEmpty
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case regex
+        case targets
+        case port
+        case isIncognito
+    }
 
     /// The link's port, with the scheme's default when it has none.
     static func effectivePort(of url: URL) -> Int? {
@@ -44,23 +60,27 @@ struct Rule: Hashable, Codable {
     @MainActor private static var invalid: Set<String> = []
 
     /// Compiled the way links are matched, so the Rules tab and the router agree.
-    @MainActor var compiledRegex: Regex<AnyRegexOutput>? {
-        if let cached = Rule.compiled[regex] {
+    @MainActor static func compile(_ pattern: String) -> Regex<AnyRegexOutput>? {
+        if let cached = compiled[pattern] {
             return cached
         }
 
-        if Rule.invalid.contains(regex) {
+        if invalid.contains(pattern) {
             return nil
         }
 
-        guard let compiled = try? Regex(regex).ignoresCase() else {
-            Rule.invalid.insert(regex)
+        guard let regex = try? Regex(pattern).ignoresCase() else {
+            invalid.insert(pattern)
             return nil
         }
 
-        Rule.compiled[regex] = compiled
+        compiled[pattern] = regex
 
-        return compiled
+        return regex
+    }
+
+    @MainActor var compiledRegex: Regex<AnyRegexOutput>? {
+        Rule.compile(regex)
     }
 
     @MainActor func matches(_ url: URL) -> Bool {
@@ -71,14 +91,22 @@ struct Rule: Hashable, Codable {
         return url.absoluteString.firstMatch(of: compiledRegex) != nil && matchesPort(of: url)
     }
 
-    /// A rule for any port whose regex takes both of these unrelated links,
-    /// such as ".*", catches every link, so no rule below it is ever reached.
+    /// Unrelated links: different schemes, hosts, ports, paths and queries. A
+    /// pattern for any port that takes all of them, such as ".*", catches every
+    /// web link, so nothing below it is ever reached.
+    private static let unrelatedLinks = [
+        "https://browserino.invalid/",
+        "http://example.org/x?y=1",
+        "https://203.0.113.7:8443/a/b#c",
+        "http://localhost/",
+    ]
+
     @MainActor var matchesEveryLink: Bool {
         guard port == nil, let compiledRegex else {
             return false
         }
 
-        return ["https://browserino.invalid/", "http://browserino.invalid/x"].allSatisfy {
+        return Rule.unrelatedLinks.allSatisfy {
             $0.firstMatch(of: compiledRegex) != nil
         }
     }
@@ -94,10 +122,10 @@ extension Rule {
     // Rules saved before port and isIncognito existed lack both keys, rules
     // saved before targets existed hold a single app and profile instead, and
     // Array+RawRepresentable turns one failed element into an empty list.
-    // Declared in an extension so the memberwise init and the synthesized
-    // CodingKeys and encoder stay, and the encoder writes targets only.
+    // Declared in an extension so the memberwise init stays.
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
         regex = try container.decode(String.self, forKey: .regex)
 
         if let targets = try container.decodeIfPresent([BrowserTarget].self, forKey: .targets) {
@@ -114,5 +142,33 @@ extension Rule {
 
         port = try container.decodeIfPresent(Int.self, forKey: .port)
         isIncognito = try container.decodeIfPresent(Bool.self, forKey: .isIncognito) ?? false
+    }
+
+    /// Also writes the single app and profile older builds require. Without
+    /// them, one launch of an older Browserino fails to read any rule, starts
+    /// with none, and saves that over the user's list.
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(regex, forKey: .regex)
+        try container.encode(targets, forKey: .targets)
+        try container.encodeIfPresent(port, forKey: .port)
+        try container.encode(isIncognito, forKey: .isIncognito)
+
+        if let legacyTarget = targets.first ?? Rule.firstVisibleBrowser() {
+            var legacy = encoder.container(keyedBy: LegacyCodingKeys.self)
+            try legacy.encode(legacyTarget.app, forKey: .app)
+            try legacy.encodeIfPresent(legacyTarget.profile, forKey: .profile)
+        }
+    }
+
+    /// An older build has no picker state; the closest it can do is the first
+    /// browser the picker would list.
+    private static func firstVisibleBrowser() -> BrowserTarget? {
+        let defaults = UserDefaults.standard
+        let browsers = [BrowserTarget](rawValue: defaults.string(forKey: "browsers") ?? "") ?? []
+        let hidden = [BrowserTarget](rawValue: defaults.string(forKey: "hiddenBrowsers") ?? "") ?? []
+
+        return browsers.first { !hidden.contains($0) }
     }
 }
