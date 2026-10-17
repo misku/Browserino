@@ -112,7 +112,7 @@ struct PromptView: View {
                                     target: app.target,
                                     title: app.target.displayName(using: nameMap),
                                     shortcut: shortcut(for: app.target)
-                                ) {
+                                ) { _ in
                                     openUrlsInApp(app: app)
                                 }
                                 .id(index)
@@ -132,11 +132,11 @@ struct PromptView: View {
                                 target: browser,
                                 title: browser.displayName(using: nameMap),
                                 shortcut: shortcut(for: browser)
-                            ) {
+                            ) { withShift in
                                 BrowserUtil.openURL(
                                     urls,
                                     target: browser,
-                                    isIncognito: isIncognito != NSEvent.modifierFlags.contains(.shift)
+                                    isIncognito: isIncognito != withShift
                                 )
                             }
                             .id(index + (appsAtTop ? appList.count : 0))
@@ -155,7 +155,7 @@ struct PromptView: View {
                                     target: app.target,
                                     title: app.target.displayName(using: nameMap),
                                     shortcut: shortcut(for: app.target)
-                                ) {
+                                ) { _ in
                                     openUrlsInApp(app: app)
                                 }
                                 .id(browserList.count + index)

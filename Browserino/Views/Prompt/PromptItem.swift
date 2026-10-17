@@ -11,7 +11,10 @@ struct PromptItem: View {
     var target: BrowserTarget
     var title: String
     var shortcut: String?
-    var action: () -> Void
+    /// Called with whether Shift asked for the other window kind. Each way in
+    /// says so itself: the live modifier state can miss a Shift that was part
+    /// of the key press.
+    var action: (_ withShift: Bool) -> Void
 
     /// A stored value that is not a letter or digit is ignored rather than bound,
     /// so it can never take over Return, Escape or the arrow keys.
@@ -20,7 +23,9 @@ struct PromptItem: View {
     }
 
     var body: some View {
-        Button(action: action) {
+        Button {
+            action(NSApp.currentEvent?.modifierFlags.contains(.shift) ?? false)
+        } label: {
             HStack(spacing: 10) {
                 Text(title)
                     .font(.system(size: 13, weight: .medium))
@@ -51,16 +56,18 @@ struct PromptItem: View {
             .padding(.vertical, 6)
         }
         .if(keyEquivalent != nil) {
-            return $0.keyboardShortcut(
-                keyEquivalent!,
-                modifiers: [.shift]
-            ).background {
-                Button(action: action) {}
-                    .opacity(0)
-                    .keyboardShortcut(
-                        keyEquivalent!,
-                        modifiers: []
-                    )
+            $0.background {
+                Button {
+                    action(false)
+                } label: {}
+                .opacity(0)
+                .keyboardShortcut(keyEquivalent!, modifiers: [])
+
+                Button {
+                    action(true)
+                } label: {}
+                .opacity(0)
+                .keyboardShortcut(keyEquivalent!, modifiers: [.shift])
             }
         }
     }
