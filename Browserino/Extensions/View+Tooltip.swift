@@ -17,20 +17,20 @@ final class HoverBubble {
     static let shared = HoverBubble()
 
     private var panel: NSPanel?
-    private weak var anchor: NSView?
+    private var owner: UUID?
     private var pending: DispatchWorkItem?
 
-    func show(_ text: String, for view: NSView) {
+    func show(_ text: String, for token: UUID) {
         pending?.cancel()
-        anchor = view
+        owner = token
 
-        let work = DispatchWorkItem { [weak self, weak view] in
+        let work = DispatchWorkItem { [weak self] in
             MainActor.assumeIsolated {
-                guard let self, let view, self.anchor === view else {
+                guard let self, self.owner == token else {
                     return
                 }
 
-                self.present(text, below: view)
+                self.present(text, near: NSEvent.mouseLocation)
             }
         }
         pending = work
@@ -38,19 +38,21 @@ final class HoverBubble {
         DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(100), execute: work)
     }
 
-    func hide(for view: NSView) {
-        guard anchor === view else {
+    func hide(for token: UUID) {
+        guard owner == token else {
             return
         }
 
         pending?.cancel()
         pending = nil
-        anchor = nil
+        owner = nil
         panel?.orderOut(nil)
     }
 
-    private func present(_ text: String, below view: NSView) {
-        guard let window = view.window, let screen = window.screen ?? NSScreen.main else {
+    /// Below the pointer, clear of the cursor image; above it when the screen
+    /// ends first.
+    private func present(_ text: String, near point: NSPoint) {
+        guard let screen = NSScreen.screens.first(where: { NSMouseInRect(point, $0.frame, false) }) ?? NSScreen.main else {
             return
         }
 
@@ -77,12 +79,10 @@ final class HoverBubble {
         content.frame = NSRect(origin: .zero, size: size)
         panel.contentView = content
 
-        let anchorRect = window.convertToScreen(view.convert(view.bounds, to: nil))
         let visible = screen.visibleFrame
-
-        var origin = NSPoint(x: anchorRect.midX - size.width / 2, y: anchorRect.minY - size.height - 6)
+        var origin = NSPoint(x: point.x - size.width / 2, y: point.y - size.height - 22)
         if origin.y < visible.minY {
-            origin.y = anchorRect.maxY + 6
+            origin.y = point.y + 12
         }
         origin.x = min(max(origin.x, visible.minX + 4), visible.maxX - size.width - 4)
 
@@ -109,61 +109,25 @@ final class HoverBubble {
     }
 }
 
-/// Watches the pointer for HoverBubble. A tracking area reports enter and exit
-/// to its owner whatever the hit testing says, so the view stays out of the
-/// way of clicks on the content it sits behind.
-private struct HoverBubbleAnchor: NSViewRepresentable {
+/// Pure SwiftUI hover tracking: nothing is layered over the content, so it
+/// can't take a click meant for the view underneath.
+private struct HoverBubbleModifier: ViewModifier {
     let text: String
 
-    final class AnchorView: NSView {
-        var text = ""
-        private var trackingArea: NSTrackingArea?
+    @State private var token = UUID()
 
-        override func updateTrackingAreas() {
-            super.updateTrackingAreas()
-
-            if let trackingArea {
-                removeTrackingArea(trackingArea)
+    func body(content: Content) -> some View {
+        content
+            .onHover { isInside in
+                if isInside {
+                    HoverBubble.shared.show(text, for: token)
+                } else {
+                    HoverBubble.shared.hide(for: token)
+                }
             }
-
-            let area = NSTrackingArea(
-                rect: .zero,
-                options: [.mouseEnteredAndExited, .activeInActiveApp, .inVisibleRect],
-                owner: self
-            )
-            addTrackingArea(area)
-            trackingArea = area
-        }
-
-        override func mouseEntered(with event: NSEvent) {
-            HoverBubble.shared.show(text, for: self)
-        }
-
-        override func mouseExited(with event: NSEvent) {
-            HoverBubble.shared.hide(for: self)
-        }
-
-        override func viewDidMoveToWindow() {
-            super.viewDidMoveToWindow()
-
-            if window == nil {
-                HoverBubble.shared.hide(for: self)
+            .onDisappear {
+                HoverBubble.shared.hide(for: token)
             }
-        }
-
-        override func hitTest(_ point: NSPoint) -> NSView? {
-            nil
-        }
-    }
-
-    func makeNSView(context: Context) -> AnchorView {
-        let view = AnchorView()
-        view.text = text
-        return view
-    }
-
-    func updateNSView(_ nsView: AnchorView, context: Context) {
-        nsView.text = text
     }
 }
 
@@ -172,6 +136,6 @@ extension View {
     /// Use .help for everything else: its short system delay keeps tooltips
     /// from flashing while the pointer crosses a row of buttons.
     func hoverBubble(_ text: String) -> some View {
-        background(HoverBubbleAnchor(text: text))
+        modifier(HoverBubbleModifier(text: text))
     }
 }

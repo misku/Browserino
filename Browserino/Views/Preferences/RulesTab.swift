@@ -25,7 +25,7 @@ private struct TargetIcons: View {
     let pickerText: String
     let action: () -> Void
 
-    static let slot: CGFloat = 22
+    static let slot: CGFloat = 34
     static let gap: CGFloat = 4
 
     private var shown: [BrowserTarget] {
@@ -46,14 +46,14 @@ private struct TargetIcons: View {
                         ForEach(Array(shown.enumerated()), id: \.offset) { _, target in
                             VStack(spacing: 1) {
                                 if Bundle(url: target.app) != nil {
-                                    BrowserTargetIcon(target: target, badgeSize: 8)
-                                        .frame(width: 20, height: 20)
+                                    BrowserTargetIcon(target: target, badgeSize: 12)
+                                        .frame(width: 32, height: 32)
                                         .opacity(target.hasMissingProfile ? 0.4 : 1)
                                 } else {
                                     Image(systemName: "questionmark.app.dashed")
-                                        .font(.system(size: 14))
+                                        .font(.system(size: 22))
                                         .foregroundStyle(.secondary)
-                                        .frame(width: 20, height: 20)
+                                        .frame(width: 32, height: 32)
                                 }
 
                                 Text(number(target).map(String.init) ?? "?")
@@ -65,21 +65,79 @@ private struct TargetIcons: View {
 
                         if shown.count < targets.count {
                             Text("+\(targets.count - shown.count)")
-                                .font(.caption.weight(.semibold))
+                                .font(.callout.weight(.semibold))
                                 .foregroundStyle(.secondary)
-                                .frame(width: Self.slot + 8, height: 20)
+                                .frame(width: Self.slot + 4, height: 26)
                                 .background(Capsule().fill(Color.primary.opacity(0.08)))
                         }
                     }
                 }
             }
-            .frame(height: 34)
+            .frame(minHeight: 46)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .hoverBubble(bubble)
         .accessibilityLabel(bubble)
         .accessibilityHint("Shows the browser list")
+    }
+}
+
+/// A checkbox drawn as a button. A Toggle's binding can be written by
+/// SwiftUI itself while it updates the view; a button only acts on a click,
+/// so a browser is only ever added or removed by the user.
+private struct BrowserCheckbox: View {
+    let target: BrowserTarget
+    let number: Int?
+    let name: String
+    let isOn: Bool
+    let isInstalled: Bool
+    let isHidden: Bool
+    let isEnabled: Bool
+    let help: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 8) {
+                Image(systemName: isOn ? "checkmark.square.fill" : "square")
+                    .font(.system(size: 14))
+                    .foregroundStyle(isOn ? Color.accentColor : Color.secondary)
+
+                Text(number.map(String.init) ?? "?")
+                    .font(.callout.monospacedDigit())
+                    .foregroundStyle(.secondary)
+                    .frame(width: 20, alignment: .trailing)
+
+                if isInstalled {
+                    BrowserTargetIcon(target: target, badgeSize: 10)
+                        .frame(width: 24, height: 24)
+                } else {
+                    Image(systemName: "questionmark.app.dashed")
+                        .font(.system(size: 18))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 24, height: 24)
+                }
+
+                Text(name)
+                    .lineLimit(1)
+                    .foregroundStyle(isHidden || !isInstalled ? .secondary : .primary)
+
+                if isHidden {
+                    Image(systemName: "eye.slash")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.tertiary)
+                }
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(!isEnabled)
+        .opacity(isEnabled || isOn ? 1 : 0.5)
+        .help(help)
+        .accessibilityLabel(name)
+        .accessibilityValue(isOn ? "Checked" : "Unchecked")
+        .accessibilityAddTraits(.isButton)
     }
 }
 
@@ -91,90 +149,58 @@ private struct BrowserChooser: View {
     let browsers: [BrowserTarget]
     let hidden: [BrowserTarget]
     let names: [String: String]
-    @Binding var targets: [BrowserTarget]
-
-    @State private var otherPresented = false
+    let targets: [BrowserTarget]
+    let setTargets: ([BrowserTarget]) -> Void
+    let chooseOtherApp: () -> Void
 
     private var offList: [BrowserTarget] {
         targets.filter { !browsers.contains($0) }
     }
 
-    private func add(_ target: BrowserTarget) {
-        if !targets.contains(target) {
-            targets = (targets + [target]).ordered(like: browsers)
+    private func toggle(_ target: BrowserTarget) {
+        if targets.contains(target) {
+            setTargets(targets.filter { $0 != target })
+        } else {
+            setTargets((targets + [target]).ordered(like: browsers))
         }
     }
 
-    private func binding(for target: BrowserTarget) -> Binding<Bool> {
-        Binding(
-            get: { targets.contains(target) },
-            set: { isOn in
-                if isOn {
-                    add(target)
-                } else {
-                    targets.removeAll { $0 == target }
-                }
-            }
-        )
-    }
-
-    private func cell(_ target: BrowserTarget, number: Int?) -> some View {
-        let isChecked = targets.contains(target)
-        let isOnlyOne = isChecked && targets.count == 1
+    private func checkbox(_ target: BrowserTarget, number: Int?) -> some View {
+        let isOn = targets.contains(target)
+        let isOnlyOne = isOn && targets.count == 1
         let isInstalled = Bundle(url: target.app) != nil
         let isHidden = hidden.contains(target)
         let name = isInstalled
             ? target.displayName(using: names)
             : "\(target.app.appDisplayName) (not installed)"
 
-        return Toggle(isOn: binding(for: target)) {
-            HStack(spacing: 6) {
-                Text(number.map(String.init) ?? "?")
-                    .font(.caption.monospacedDigit())
-                    .foregroundStyle(.secondary)
-                    .frame(width: 18, alignment: .trailing)
-
-                if isInstalled {
-                    BrowserTargetIcon(target: target, badgeSize: 7)
-                        .frame(width: 16, height: 16)
-                } else {
-                    Image(systemName: "questionmark.app.dashed")
-                        .foregroundStyle(.secondary)
-                        .frame(width: 16, height: 16)
-                }
-
-                Text(name)
-                    .lineLimit(1)
-                    .foregroundStyle(isHidden || !isInstalled ? .secondary : .primary)
-
-                if isHidden {
-                    Image(systemName: "eye.slash")
-                        .font(.system(size: 9))
-                        .foregroundStyle(.tertiary)
-                }
-            }
-        }
-        .toggleStyle(.checkbox)
-        // Something that isn't there can only be unchecked.
-        .disabled(isOnlyOne || (!isChecked && (!isInstalled || number == nil)))
-        .help(
-            isOnlyOne
+        return BrowserCheckbox(
+            target: target,
+            number: number,
+            name: name,
+            isOn: isOn,
+            isInstalled: isInstalled,
+            isHidden: isHidden,
+            // Something that isn't there can only be unchecked.
+            isEnabled: !isOnlyOne && (isOn || (isInstalled && number != nil)),
+            help: isOnlyOne
                 ? "A rule needs at least one browser. Use Reset to show the picker instead."
-                : "\(number.map(String.init) ?? "?") · \(name)\(isHidden ? ", hidden from the picker" : "")"
+                : "\(number.map(String.init) ?? "?") · \(name)\(isHidden ? ", hidden from the picker" : "")",
+            action: { toggle(target) }
         )
     }
 
     var body: some View {
-        let columns = [GridItem(.adaptive(minimum: 180), spacing: 16, alignment: .leading)]
+        let columns = [GridItem(.adaptive(minimum: 210), spacing: 16, alignment: .leading)]
 
         VStack(alignment: .leading, spacing: 10) {
             Text(heading)
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
 
-            LazyVGrid(columns: columns, alignment: .leading, spacing: 6) {
-                ForEach(Array(browsers.enumerated()), id: \.offset) { index, browser in
-                    cell(browser, number: index + 1)
+            LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
+                ForEach(Array(browsers.enumerated()), id: \.element) { index, browser in
+                    checkbox(browser, number: index + 1)
                 }
             }
 
@@ -184,18 +210,16 @@ private struct BrowserChooser: View {
                     .foregroundStyle(.secondary)
                     .padding(.top, 4)
 
-                LazyVGrid(columns: columns, alignment: .leading, spacing: 6) {
-                    ForEach(Array(offList.enumerated()), id: \.offset) { _, target in
-                        cell(target, number: nil)
+                LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
+                    ForEach(offList, id: \.self) { target in
+                        checkbox(target, number: nil)
                     }
                 }
             }
 
             HStack(alignment: .firstTextBaseline) {
-                Button("Choose Other App…") {
-                    otherPresented = true
-                }
-                .help("Send these links to an app that isn't in the Browsers list")
+                Button("Choose Other App…", action: chooseOtherApp)
+                    .help("Send these links to an app that isn't in the Browsers list")
 
                 Spacer(minLength: 12)
 
@@ -214,11 +238,7 @@ private struct BrowserChooser: View {
         .background {
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .fill(Color.primary.opacity(0.04))
-        }
-        .fileImporter(isPresented: $otherPresented, allowedContentTypes: [.application]) { result in
-            if case .success(let url) = result {
-                add(BrowserTarget(app: url))
-            }
+                .allowsHitTesting(false)
         }
     }
 }
@@ -243,6 +263,8 @@ private struct RuleRow: View {
     let reset: () -> Void
     let warning: String?
     let chooser: BrowserChooser
+    var moveUp: (() -> Void)? = nil
+    var moveDown: (() -> Void)? = nil
 
     private var titleText: some View {
         HStack(spacing: 4) {
@@ -279,6 +301,8 @@ private struct RuleRow: View {
                     }
                     .buttonStyle(.plain)
                     .help(port.map { "\(title) on port \(String($0))" } ?? title)
+                    .accessibilityAction(named: "Move Up") { moveUp?() }
+                    .accessibilityAction(named: "Move Down") { moveDown?() }
                 } else {
                     Color.clear.frame(width: 24, height: 24)
 
@@ -337,7 +361,7 @@ private struct RuleRow: View {
                 chooser
                     .padding(.horizontal, 12)
                     .padding(.bottom, 12)
-                    .transition(.opacity.combined(with: .move(edge: .top)))
+                    .transition(.opacity)
             }
         }
         .clipped()
@@ -357,12 +381,13 @@ struct RulesTab: View {
     @State private var editing: Rule?
     @State private var pendingReset: RowKey?
     @State private var pendingDelete: Rule?
+    @State private var choosingOtherAppFor: RowKey?
     @State private var width: CGFloat = 660
 
     /// Six icons fit next to a readable pattern at the narrowest window; every
-    /// extra 26pt of width shows one more.
+    /// extra 38pt of width shows one more.
     private var iconCap: Int {
-        6 + max(0, Int((width - 660) / 26))
+        6 + max(0, Int((width - 660) / (TargetIcons.slot + TargetIcons.gap)))
     }
 
     private func number(of target: BrowserTarget) -> Int? {
@@ -416,11 +441,13 @@ struct RulesTab: View {
         rules[index] = rule
     }
 
-    private func targets(of id: UUID) -> Binding<[BrowserTarget]> {
-        Binding(
-            get: { rules.first { $0.id == id }?.targets ?? [] },
-            set: { newTargets in update(id) { $0.targets = newTargets } }
-        )
+    private func setTargets(_ targets: [BrowserTarget], for key: RowKey) {
+        switch key {
+        case .rule(let id):
+            update(id) { $0.targets = targets }
+        case .allOtherLinks:
+            catchallTargets = targets
+        }
     }
 
     private func toggle(_ key: RowKey) {
@@ -437,7 +464,11 @@ struct RulesTab: View {
 
     private func ruleRow(_ rule: Rule, index: Int, handle: ReorderHandle, isUnreachable: Bool) -> some View {
         RuleRow(
-            handle: handle,
+            handle: handle.addingMenu([
+                .action("Edit Rule…") { editing = rule },
+                .action("Show Picker…", isEnabled: !rule.showsPicker) { pendingReset = .rule(rule.id) },
+                .action("Delete Rule…") { pendingDelete = rule },
+            ]),
             onEdit: { editing = rule },
             title: rule.regex,
             isPattern: true,
@@ -460,37 +491,13 @@ struct RulesTab: View {
                 browsers: browsers,
                 hidden: hiddenBrowsers,
                 names: names,
-                targets: targets(of: rule.id)
-            )
+                targets: rule.targets,
+                setTargets: { setTargets($0, for: .rule(rule.id)) },
+                chooseOtherApp: { choosingOtherAppFor = .rule(rule.id) }
+            ),
+            moveUp: index > 0 ? { move(from: index, to: index - 1) } : nil,
+            moveDown: index < rules.count - 1 ? { move(from: index, to: index + 1) } : nil
         )
-        .contextMenu {
-            Button("Edit Rule…") { editing = rule }
-
-            Divider()
-
-            Button("Move Up") { move(from: index, to: index - 1) }
-                .disabled(index == 0)
-            Button("Move Down") { move(from: index, to: index + 1) }
-                .disabled(index == rules.count - 1)
-            Button("Move to Top") { move(from: index, to: 0) }
-                .disabled(index == 0)
-
-            Divider()
-
-            Button("Show Picker…") { pendingReset = .rule(rule.id) }
-                .disabled(rule.showsPicker)
-            Button("Delete Rule…", role: .destructive) { pendingDelete = rule }
-        }
-        .accessibilityAction(named: "Move Up") {
-            if index > 0 {
-                move(from: index, to: index - 1)
-            }
-        }
-        .accessibilityAction(named: "Move Down") {
-            if index < rules.count - 1 {
-                move(from: index, to: index + 1)
-            }
-        }
     }
 
     private var allOtherLinksRow: some View {
@@ -520,7 +527,9 @@ struct RulesTab: View {
                 browsers: browsers,
                 hidden: hiddenBrowsers,
                 names: names,
-                targets: $catchallTargets
+                targets: catchallTargets,
+                setTargets: { setTargets($0, for: .allOtherLinks) },
+                chooseOtherApp: { choosingOtherAppFor = .allOtherLinks }
             )
         )
     }
@@ -622,6 +631,33 @@ struct RulesTab: View {
             .keyboardShortcut("n")
             .opacity(0)
             .accessibilityHidden(true)
+        }
+        // One importer for every row's Choose Other App, so a result can only
+        // ever reach the row that asked for it.
+        .fileImporter(
+            isPresented: Binding(
+                get: { choosingOtherAppFor != nil },
+                set: { if !$0 { choosingOtherAppFor = nil } }
+            ),
+            allowedContentTypes: [.application]
+        ) { result in
+            guard let key = choosingOtherAppFor, case .success(let url) = result else {
+                return
+            }
+
+            let current: [BrowserTarget]
+            switch key {
+            case .rule(let id):
+                current = rules.first { $0.id == id }?.targets ?? []
+            case .allOtherLinks:
+                current = catchallTargets
+            }
+
+            let target = BrowserTarget(app: url)
+            if !current.contains(target) {
+                setTargets((current + [target]).ordered(like: browsers), for: key)
+            }
+            choosingOtherAppFor = nil
         }
         .sheet(isPresented: $addPresented) {
             RuleForm(
