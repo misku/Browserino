@@ -61,12 +61,25 @@ enum ChromiumProfileService {
 
         let browser = Bundle(url: app)?.appDisplayName ?? app.appDisplayName
 
+        guard requestAccess(toFolder: root, message: "Choose this folder so Browserino can list \(browser)'s profiles.") else {
+            return false
+        }
+
+        cache[app] = nil
+        recentProfiles[app] = nil
+
+        return true
+    }
+
+    /// Asks the user to point at a browser's data folder once, and keeps the
+    /// grant. Firefox containers use the same grant as Chromium profiles.
+    static func requestAccess(toFolder root: URL, message: String) -> Bool {
         let panel = NSOpenPanel()
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
         panel.allowsMultipleSelection = false
         panel.directoryURL = root
-        panel.message = "Choose this folder so Browserino can list \(browser)'s profiles."
+        panel.message = message
         panel.prompt = "Grant Access"
 
         guard panel.runModal() == .OK, let picked = panel.url else {
@@ -82,13 +95,11 @@ enum ChromiumProfileService {
         }
 
         bookmarks[root.path] = data
-        cache[app] = nil
-        recentProfiles[app] = nil
 
         return true
     }
 
-    private static func withAccess<T>(to root: URL, _ body: () -> T?) -> T? {
+    static func withAccess<T>(to root: URL, _ body: () -> T?) -> T? {
         guard let data = bookmarks[root.path] else {
             // No grant yet. Still worth attempting: a browser whose data is not
             // protected, or an app already holding wider access, reads fine.
@@ -327,5 +338,223 @@ enum ChromiumProfileService {
         }
 
         return Int(directory.dropFirst("Profile ".count))
+    }
+}
+
+/// A Firefox container (contextual identity): tabs in it keep their own
+/// cookies and logins inside one profile. Not a profile.
+struct FirefoxContainer: Hashable {
+    let name: String
+    let color: String
+    let icon: String
+}
+
+/// Reads the containers of the profile Firefox opens by default. Firefox
+/// can't be told from outside to open a link in a container; the free
+/// extension "Open external links in a container" adds that, by handling
+/// ext+container: links. Browserino sends those, so container rows need it.
+@MainActor
+enum FirefoxContainerService {
+    /// Where each Firefox family browser keeps profiles.ini, under
+    /// ~/Library/Application Support.
+    private static let dataDirectoryNames: [(prefix: String, name: String)] = [
+        ("org.mozilla.", "Firefox"),
+        ("app.zen-browser.", "zen"),
+        ("io.gitlab.librewolf", "librewolf"),
+        ("net.waterfox.", "Waterfox"),
+    ]
+
+    static let extensionPage = URL(string: "https://addons.mozilla.org/firefox/addon/open-url-in-container/")!
+
+    private static let memoLifetime: TimeInterval = 2
+    private static var recentContainers: [URL: (time: Date, containers: [FirefoxContainer]?)] = [:]
+
+    /// nil when the app is not a Firefox family browser with profiles on disk.
+    static func dataDirectory(forAppAt app: URL) -> URL? {
+        guard let identifier = Bundle(url: app)?.bundleIdentifier?.lowercased(),
+              let entry = dataDirectoryNames.first(where: { identifier.hasPrefix($0.prefix) }),
+              let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+        else {
+            return nil
+        }
+
+        let root = support.appending(path: entry.name)
+
+        // fileExists answers without permission, where reading may be refused.
+        guard FileManager.default.fileExists(atPath: root.appending(path: "profiles.ini").path) else {
+            return nil
+        }
+
+        return root
+    }
+
+    /// The profile a plain launch opens: the install's default when
+    /// profiles.ini names one, else the profile marked Default=1, else the
+    /// first. Each install of Firefox records its own default.
+    private static func defaultProfile(in root: URL) -> URL? {
+        guard let text = try? String(contentsOf: root.appending(path: "profiles.ini"), encoding: .utf8) else {
+            return nil
+        }
+
+        var sections: [(name: String, values: [String: String])] = []
+
+        for rawLine in text.components(separatedBy: .newlines) {
+            let line = rawLine.trimmingCharacters(in: .whitespaces)
+
+            if line.hasPrefix("[") && line.hasSuffix("]") {
+                sections.append((String(line.dropFirst().dropLast()), [:]))
+            } else if let equals = line.firstIndex(of: "="), !sections.isEmpty {
+                let key = String(line[..<equals])
+                let value = String(line[line.index(after: equals)...])
+                sections[sections.count - 1].values[key] = value
+            }
+        }
+
+        func url(for values: [String: String]) -> URL? {
+            guard let path = values["Path"] ?? values["Default"] else {
+                return nil
+            }
+
+            return values["IsRelative"] == "0" ? URL(fileURLWithPath: path) : root.appending(path: path)
+        }
+
+        if let install = sections.first(where: { $0.name.hasPrefix("Install") }),
+           let path = install.values["Default"] {
+            return root.appending(path: path)
+        }
+
+        let profiles = sections.filter { $0.name.hasPrefix("Profile") }
+        let chosen = profiles.first { $0.values["Default"] == "1" } ?? profiles.first
+
+        return chosen.flatMap { url(for: $0.values) }
+    }
+
+    private struct ContainersFile: Decodable {
+        struct Identity: Decodable {
+            let `public`: Bool?
+            let icon: String?
+            let color: String?
+            let name: String?
+            let l10nID: String?
+            let l10nId: String?
+        }
+
+        let identities: [Identity]
+    }
+
+    /// The four containers Firefox ships carry a translation key instead of a
+    /// name. These are their English names, which is what the extension
+    /// matches against in an English Firefox.
+    private static func builtInName(_ key: String) -> String? {
+        let key = key.lowercased()
+
+        if key.contains("personal") { return "Personal" }
+        if key.contains("work") { return "Work" }
+        if key.contains("banking") { return "Banking" }
+        if key.contains("shopping") { return "Shopping" }
+
+        return nil
+    }
+
+    /// nil means "could not read", not "no containers": a read the system
+    /// refused must not delete rows the user has ordered and named.
+    static func containers(forAppAt app: URL) -> [FirefoxContainer]? {
+        if let recent = recentContainers[app], -recent.time.timeIntervalSinceNow < memoLifetime {
+            return recent.containers
+        }
+
+        let containers = dataDirectory(forAppAt: app).flatMap { root in
+            ChromiumProfileService.withAccess(to: root) { () -> [FirefoxContainer]? in
+                guard let profile = defaultProfile(in: root) else {
+                    return nil
+                }
+
+                let file = profile.appending(path: "containers.json")
+
+                // A profile that never used containers has no file yet.
+                guard FileManager.default.fileExists(atPath: file.path) else {
+                    return []
+                }
+
+                guard let data = try? Data(contentsOf: file),
+                      let decoded = try? JSONDecoder().decode(ContainersFile.self, from: data)
+                else {
+                    return nil
+                }
+
+                return decoded.identities.compactMap { identity -> FirefoxContainer? in
+                    // Firefox keeps a few hidden identities for itself.
+                    guard identity.`public` != false,
+                          let name = identity.name
+                            ?? (identity.l10nID ?? identity.l10nId).flatMap(builtInName)
+                    else {
+                        return nil
+                    }
+
+                    return FirefoxContainer(
+                        name: name,
+                        color: identity.color ?? "toolbar",
+                        icon: identity.icon ?? "circle"
+                    )
+                }
+            }
+        }
+        recentContainers[app] = (Date(), containers)
+
+        return containers
+    }
+
+    /// Whether the default profile has an extension that opens ext+container:
+    /// links. nil when that can't be read.
+    static func hasContainerExtension(forAppAt app: URL) -> Bool? {
+        guard let root = dataDirectory(forAppAt: app) else {
+            return nil
+        }
+
+        return ChromiumProfileService.withAccess(to: root) { () -> Bool? in
+            guard let profile = defaultProfile(in: root),
+                  let text = try? String(contentsOf: profile.appending(path: "extensions.json"), encoding: .utf8)
+            else {
+                return nil
+            }
+
+            return text.contains("Open external links in a container")
+                || text.contains("Default Container Handler")
+        }
+    }
+
+    @discardableResult
+    static func requestAccess(forAppAt app: URL) -> Bool {
+        guard let root = dataDirectory(forAppAt: app) else {
+            return false
+        }
+
+        let browser = Bundle(url: app)?.appDisplayName ?? app.appDisplayName
+
+        guard ChromiumProfileService.requestAccess(
+            toFolder: root,
+            message: "Choose this folder so Browserino can list \(browser)'s containers."
+        ) else {
+            return false
+        }
+
+        recentContainers[app] = nil
+
+        return true
+    }
+
+    /// An ext+container: link the extension opens in the named container.
+    /// Both parts are fully escaped, so a link's own & and = stay inside it.
+    nonisolated static func containerLink(for url: URL, container: String) -> URL? {
+        var allowed = CharacterSet.alphanumerics
+        allowed.insert(charactersIn: "-._~")
+
+        guard let name = container.addingPercentEncoding(withAllowedCharacters: allowed),
+              let link = url.absoluteString.addingPercentEncoding(withAllowedCharacters: allowed)
+        else {
+            return nil
+        }
+
+        return URL(string: "ext+container:name=\(name)&url=\(link)")
     }
 }

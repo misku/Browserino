@@ -66,7 +66,11 @@ private struct BrowserRow: View {
                     }
                     .onHover { nameHovered = $0 }
                     .frame(minWidth: 140, maxWidth: .infinity, alignment: .leading)
-                    .help("Click to rename. Clear the name to use the default.")
+                    .help(
+                        browser.container == nil
+                            ? "Click to rename. Clear the name to use the default."
+                            : "A Firefox container. Links open through the extension \"Open external links in a container\". Click to rename."
+                    )
 
                 if let flagRow {
                     Text("Same as row \(flagRow)")
@@ -166,15 +170,28 @@ struct BrowsersTab: View {
     /// too. When a grant stops working the browser is still shown as the profile
     /// rows it was stored as, so requiring a plain row here would leave the user
     /// with no way to ask again.
+    /// The same goes for a Firefox browser whose containers can't be read.
     private func needsProfileAccess(_ target: BrowserTarget) -> Bool {
-        ChromiumProfileService.userDataDirectory(forAppAt: target.app) != nil
-            && ChromiumProfileService.profiles(forAppAt: target.app) == nil
+        (ChromiumProfileService.userDataDirectory(forAppAt: target.app) != nil
+            && ChromiumProfileService.profiles(forAppAt: target.app) == nil)
+            || (FirefoxContainerService.dataDirectory(forAppAt: target.app) != nil
+                && FirefoxContainerService.containers(forAppAt: target.app) == nil)
     }
 
     /// One banner per browser, not per profile row.
     private var appsNeedingAccess: [URL] {
         var seen = Set<URL>()
         return browsers.filter(needsProfileAccess).map(\.app).filter { seen.insert($0).inserted }
+    }
+
+    /// Firefox browsers that have container rows, once each.
+    private var appsWithContainers: [URL] {
+        var seen = Set<URL>()
+        return browsers.filter { $0.container != nil }.map(\.app).filter { seen.insert($0).inserted }
+    }
+
+    private func appName(_ app: URL) -> String {
+        Bundle(url: app)?.appDisplayName ?? app.appDisplayName
     }
 
     private func rescan() {
@@ -222,21 +239,65 @@ struct BrowsersTab: View {
                         .font(.system(size: 18))
                         .foregroundStyle(.secondary)
 
-                    Text("\(Bundle(url: app)?.appDisplayName ?? app.appDisplayName)'s profiles can't be read yet.")
+                    let isFirefox = FirefoxContainerService.dataDirectory(forAppAt: app) != nil
+
+                    Text("\(appName(app))'s \(isFirefox ? "containers" : "profiles") can't be read yet.")
 
                     Spacer()
 
                     Button("Allow Access…") {
-                        if ChromiumProfileService.requestAccess(forAppAt: app) {
+                        let granted = isFirefox
+                            ? FirefoxContainerService.requestAccess(forAppAt: app)
+                            : ChromiumProfileService.requestAccess(forAppAt: app)
+
+                        if granted {
                             rescan()
                         }
                     }
-                    .help("macOS keeps a browser's profiles private until you choose its folder once.")
+                    .help("macOS keeps a browser's data private until you choose its folder once.")
                 }
                 .padding(10)
                 .background {
                     RoundedRectangle(cornerRadius: 8, style: .continuous)
                         .fill(Color.primary.opacity(0.05))
+                }
+            }
+
+            // Firefox can't open a container from outside on its own; the
+            // extension can. Say so wherever container rows exist, and confirm
+            // once it is installed.
+            ForEach(appsWithContainers, id: \.self) { app in
+                let isInstalled = FirefoxContainerService.hasContainerExtension(forAppAt: app) == true
+
+                HStack(spacing: 10) {
+                    Image(systemName: isInstalled ? "checkmark.circle.fill" : "puzzlepiece.extension")
+                        .font(.system(size: 18))
+                        .foregroundStyle(isInstalled ? Color.green : Color.secondary)
+
+                    Text(
+                        isInstalled
+                            ? "\(appName(app)) containers open through the extension \"Open external links in a container\", which is installed."
+                            : "\(appName(app)) containers need the free extension \"Open external links in a container\". Without it, links sent to a container don't open."
+                    )
+                    .fixedSize(horizontal: false, vertical: true)
+
+                    Spacer()
+
+                    if !isInstalled {
+                        Button("Get Extension…") {
+                            NSWorkspace.shared.open(
+                                [FirefoxContainerService.extensionPage],
+                                withApplicationAt: app,
+                                configuration: NSWorkspace.OpenConfiguration()
+                            )
+                        }
+                        .help("Open the extension's page in \(appName(app))")
+                    }
+                }
+                .padding(10)
+                .background {
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(Color.primary.opacity(isInstalled ? 0.03 : 0.05))
                 }
             }
 

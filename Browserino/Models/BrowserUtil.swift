@@ -103,6 +103,20 @@ class BrowserUtil {
         forAppAt app: URL,
         oldBrowsers: [BrowserTarget]
     ) -> [BrowserTarget] {
+        // Firefox keeps its own row, for a normal tab, and gets one more row
+        // per container of the profile it opens by default.
+        if FirefoxContainerService.dataDirectory(forAppAt: app) != nil {
+            guard let containers = FirefoxContainerService.containers(forAppAt: app) else {
+                // Unreadable this time. Keep the container rows the user
+                // already has rather than deleting them on one bad read.
+                return [BrowserTarget(app: app)]
+                    + oldBrowsers.filter { $0.app == app && $0.container != nil }
+            }
+
+            return [BrowserTarget(app: app)]
+                + containers.map { BrowserTarget(app: app, container: $0.name) }
+        }
+
         guard let profiles = ChromiumProfileService.profiles(forAppAt: app) else {
             // Local State unreadable. If this is a Chromium browser we already knew
             // profiles for, keep them: dropping to a bare entry here would discard
@@ -170,6 +184,19 @@ class BrowserUtil {
         }
 
         let configuration = NSWorkspace.OpenConfiguration()
+
+        // A container tab is opened by the Firefox extension behind
+        // ext+container: links. Private windows have no containers, so a
+        // private open goes to a normal private window instead.
+        if let container = target.container, !isIncognito {
+            NSWorkspace.shared.open(
+                urls.compactMap { FirefoxContainerService.containerLink(for: $0, container: container) },
+                withApplicationAt: target.app,
+                configuration: configuration
+            )
+            return
+        }
+
         var arguments: [String] = []
 
         if let profile = target.profile, isKnownProfile(profile, forAppAt: target.app) {

@@ -79,17 +79,12 @@ private struct BrowserListRow: View {
 /// apart, and a long menu is hard to scan. Anything not in the list is still
 /// reachable through Other App.
 struct BrowserTargetList: View {
-    @Binding var app: URL?
-    @Binding var profile: String?
+    @Binding var selection: BrowserTarget?
 
     @AppStorage("browsers") private var browsers: [BrowserTarget] = []
     @AppStorage("hiddenBrowsers") private var hiddenBrowsers: [BrowserTarget] = []
     @AppStorage("browserNames") private var names: [String: String] = [:]
     @State private var otherPresented = false
-
-    private var selection: BrowserTarget? {
-        app.map { BrowserTarget(app: $0, profile: profile) }
-    }
 
     /// Two Chrome profiles can both be called "misku". Their numbers already
     /// differ; the browser and profile folder make the names differ too.
@@ -121,8 +116,7 @@ struct BrowserTargetList: View {
             isSelected: target == selection,
             isHidden: hiddenBrowsers.contains(target),
             select: {
-                app = target.app
-                profile = target.profile
+                selection = target
             }
         )
         .id(target)
@@ -186,9 +180,8 @@ struct BrowserTargetList: View {
             allowedContentTypes: [.application]
         ) {
             if case .success(let url) = $0 {
-                app = url
-                // The previous app's profile directory means nothing here.
-                profile = nil
+                // A plain app: the previous profile or container means nothing here.
+                selection = BrowserTarget(app: url)
             }
         }
     }

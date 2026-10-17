@@ -258,9 +258,12 @@ private struct BrowserChooser: View {
                 Spacer(minLength: 12)
 
                 Text(
-                    targets.isEmpty
+                    (targets.isEmpty
                         ? "Shows the picker with all browsers. Check browsers to choose them instead."
-                        : "One browser opens links directly; two or more show the picker with only those."
+                        : "One browser opens links directly; two or more show the picker with only those.")
+                    + (targets.contains { $0.container != nil }
+                        ? " Firefox containers need the extension \"Open external links in a container\"."
+                        : "")
                 )
                 .font(.caption)
                 .foregroundStyle(.secondary)

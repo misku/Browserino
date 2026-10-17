@@ -12,9 +12,11 @@ struct App: Codable, Hashable {
     var schemeOverride: String
     var app: URL
     var profile: String?
+    /// A Firefox container, when the App is one of Firefox's container rows.
+    var container: String?
 
     var target: BrowserTarget {
-        BrowserTarget(app: app, profile: profile)
+        BrowserTarget(app: app, profile: profile, container: container)
     }
 
     /// The links with this app's scheme override applied.

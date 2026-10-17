@@ -8,14 +8,17 @@ import Foundation
 
 /// A browser to open links in. `profile` names a Chromium profile directory;
 /// nil means the browser picks, which is what every entry meant before profiles
-/// existed.
+/// existed. `container` names a Firefox container in the profile Firefox opens
+/// by default.
 struct BrowserTarget: Codable, Hashable {
     var app: URL
     var profile: String?
+    var container: String?
 
-    init(app: URL, profile: String? = nil) {
+    init(app: URL, profile: String? = nil, container: String? = nil) {
         self.app = app
         self.profile = profile
+        self.container = container
     }
 
     /// The open panel hands back "Foo.app/" where Launch Services says
@@ -25,12 +28,13 @@ struct BrowserTarget: Codable, Hashable {
     }
 
     static func == (lhs: BrowserTarget, rhs: BrowserTarget) -> Bool {
-        lhs.appPath == rhs.appPath && lhs.profile == rhs.profile
+        lhs.appPath == rhs.appPath && lhs.profile == rhs.profile && lhs.container == rhs.container
     }
 
     func hash(into hasher: inout Hasher) {
         hasher.combine(appPath)
         hasher.combine(profile)
+        hasher.combine(container)
     }
 
     /// Earlier builds stored these as bare URL strings. Both shapes have to
@@ -47,18 +51,24 @@ struct BrowserTarget: Codable, Hashable {
 
         self.init(
             app: try container.decode(URL.self, forKey: .app),
-            profile: try container.decodeIfPresent(String.self, forKey: .profile)
+            profile: try container.decodeIfPresent(String.self, forKey: .profile),
+            container: try container.decodeIfPresent(String.self, forKey: .container)
         )
     }
 
-    /// Shortcuts are stored per target. Profile-less targets keep using the bare
-    /// bundle identifier so shortcuts recorded before this feature still resolve.
+    /// Shortcuts and names are stored per target. Plain targets keep using the
+    /// bare bundle identifier so shortcuts recorded before profiles still
+    /// resolve.
     func shortcutKey(bundleIdentifier: String) -> String {
-        guard let profile else {
-            return bundleIdentifier
+        if let profile {
+            return "\(bundleIdentifier)#\(profile)"
         }
 
-        return "\(bundleIdentifier)#\(profile)"
+        if let container {
+            return "\(bundleIdentifier)@container:\(container)"
+        }
+
+        return bundleIdentifier
     }
 }
 
@@ -98,23 +108,39 @@ extension BrowserTarget {
             .first { $0.directory == profile }
     }
 
-    /// A profile the browser no longer knows about — the user switched machines,
-    /// restored a backup, or deleted it in the browser. An unreadable profile list
-    /// is not evidence of absence, matching how links are opened.
-    var hasMissingProfile: Bool {
-        guard let profile,
-              let profiles = ChromiumProfileService.profiles(forAppAt: app)
-        else {
-            return false
+    var firefoxContainer: FirefoxContainer? {
+        guard let container else {
+            return nil
         }
 
-        return !profiles.contains { $0.directory == profile }
+        return FirefoxContainerService.containers(forAppAt: app)?
+            .first { $0.name == container }
+    }
+
+    /// A profile or container the browser no longer knows about: the user
+    /// switched machines, restored a backup, or deleted it in the browser. An
+    /// unreadable list is not evidence of absence, matching how links are opened.
+    var hasMissingProfile: Bool {
+        if let profile, let profiles = ChromiumProfileService.profiles(forAppAt: app) {
+            return !profiles.contains { $0.directory == profile }
+        }
+
+        if let container, let containers = FirefoxContainerService.containers(forAppAt: app) {
+            return !containers.contains { $0.name == container }
+        }
+
+        return false
     }
 
     /// "Chrome" for a browser, "Work" for one of its profiles: the icon already
-    /// says which browser a profile belongs to.
+    /// says which browser a profile belongs to. A container keeps the browser
+    /// in its name, "Firefox: Work", since it isn't a profile of its own.
     var defaultName: String {
         let browser = Bundle(url: app)?.appDisplayName ?? app.appDisplayName
+
+        if let container {
+            return hasMissingProfile ? "\(browser): \(container) (missing)" : "\(browser): \(container)"
+        }
 
         guard let profile else {
             return browser

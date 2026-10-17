@@ -16,8 +16,7 @@ struct AppForm: View {
     var onDelete: (() -> Void)? = nil
 
     @State private var host: String = ""
-    @State private var appURL: URL?
-    @State private var profile: String?
+    @State private var target: BrowserTarget?
     @State private var schemeOverride: String = ""
     @State private var confirmDelete = false
     @State private var isLoaded = false
@@ -40,7 +39,7 @@ struct AppForm: View {
     }
 
     private var canSave: Bool {
-        normalizedHost != nil && appURL != nil
+        normalizedHost != nil && target != nil
     }
 
     /// A caption over a field, the way the rest of the sheet labels things.
@@ -70,7 +69,7 @@ struct AppForm: View {
             VStack(alignment: .leading, spacing: 6) {
                 label("Open in")
 
-                BrowserTargetList(app: $appURL, profile: $profile)
+                BrowserTargetList(selection: $target)
                     .frame(maxHeight: .infinity)
             }
 
@@ -100,7 +99,7 @@ struct AppForm: View {
                     .keyboardShortcut(.cancelAction)
 
                 Button(original == nil ? "Add App" : "Save") {
-                    guard let host = normalizedHost, let appURL else {
+                    guard let host = normalizedHost, let target else {
                         return
                     }
 
@@ -108,8 +107,9 @@ struct AppForm: View {
                         App(
                             host: host,
                             schemeOverride: schemeOverride.trimmingCharacters(in: .whitespaces),
-                            app: appURL,
-                            profile: profile
+                            app: target.app,
+                            profile: target.profile,
+                            container: target.container
                         )
                     )
                 }
@@ -141,8 +141,7 @@ struct AppForm: View {
 
             isLoaded = true
             host = original?.host ?? ""
-            appURL = original?.app
-            profile = original?.profile
+            target = original?.target
             schemeOverride = original?.schemeOverride ?? ""
         }
     }
