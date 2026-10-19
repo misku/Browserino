@@ -180,6 +180,36 @@ struct PromptView: View {
                         scrollViewProxy.scrollTo(selected, anchor: .center)
                     }
                 }
+                // Shortcut letters and digits, handled by the focused list
+                // like the arrows. Key equivalents on hidden buttons don't
+                // reliably reach a picker opened from some apps; whichever
+                // path sees the key first consumes it.
+                .onKeyPress(phases: .down) { press in
+                    guard press.modifiers.isDisjoint(with: [.command, .option, .control]) else {
+                        return .ignored
+                    }
+
+                    let key = String(press.key.character).uppercased()
+                    guard PickerShortcut.isValid(key) else {
+                        return .ignored
+                    }
+
+                    if let app = appList.first(where: { shortcut(for: $0.target) == key }) {
+                        openUrlsInApp(app: app)
+                        return .handled
+                    }
+
+                    if let browser = browserList.first(where: { shortcut(for: $0) == key }) {
+                        BrowserUtil.openURL(
+                            urls,
+                            target: browser,
+                            isIncognito: isIncognito != press.modifiers.contains(.shift)
+                        )
+                        return .handled
+                    }
+
+                    return .ignored
+                }
                 .background {
                     Button(action: {
                         openSelected(isIncognito: isIncognito)
