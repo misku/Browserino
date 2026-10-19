@@ -149,7 +149,7 @@ Chrome, Brave, Edge, Vivaldi, Arc, Opera and other Chromium browsers with severa
 
 ### Firefox containers
 
-Each container in your default Firefox profile appears as its own row, such as **Firefox: Work**, with the container's colour and icon on the Firefox icon. Firefox itself can't be asked to open a container, so Browserino relies on the free extension [Open external links in a container](https://addons.mozilla.org/en-US/firefox/addon/open-url-in-container/). The Browsers tab shows whether it's installed and offers a **Get Extension…** button. Firefox's built-in containers (Personal, Work, Banking, Shopping) are matched by their English names. A private window can't use a container, so a private open uses a normal private window. Zen, LibreWolf and Waterfox are supported the same way.
+Each container in your default Firefox profile appears as its own row, such as **Firefox: Work**, with the container's colour and icon on the Firefox icon. Firefox itself can't be asked to open a container, so Browserino relies on the free extension [Open external links in a container](https://addons.mozilla.org/en-US/firefox/addon/open-url-in-container/). The Browsers tab shows whether it's installed and offers a **Get Extension…** button. Firefox's built-in containers (Personal, Work, Banking, Shopping) are matched by their English names. A private window can't use a container, so a private open uses a normal private window. Firefox only lets the extension open web links, so a `file://` or other non-web link sent to a container opens in a normal Firefox tab. Zen, LibreWolf and Waterfox are supported the same way.
 
 ## Apps
 

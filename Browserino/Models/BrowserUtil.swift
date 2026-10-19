@@ -187,13 +187,25 @@ class BrowserUtil {
 
         // A container tab is opened by the Firefox extension behind
         // ext+container: links. Private windows have no containers, so a
-        // private open goes to a normal private window instead.
+        // private open goes to a normal private window instead. Firefox only
+        // lets extensions open web links, so file: and other links go to
+        // Firefox as they are, in a normal tab, rather than to an error page.
         if let container = target.container, !isIncognito {
-            NSWorkspace.shared.open(
-                urls.compactMap { FirefoxContainerService.containerLink(for: $0, container: container) },
-                withApplicationAt: target.app,
-                configuration: configuration
-            )
+            let isWebLink = { (url: URL) in ["http", "https"].contains(url.scheme?.lowercased() ?? "") }
+            let webLinks = urls.filter(isWebLink)
+            let otherLinks = urls.filter { !isWebLink($0) }
+
+            if !webLinks.isEmpty {
+                NSWorkspace.shared.open(
+                    webLinks.compactMap { FirefoxContainerService.containerLink(for: $0, container: container) },
+                    withApplicationAt: target.app,
+                    configuration: configuration
+                )
+            }
+
+            if !otherLinks.isEmpty {
+                NSWorkspace.shared.open(otherLinks, withApplicationAt: target.app, configuration: configuration)
+            }
             return
         }
 
