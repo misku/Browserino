@@ -305,6 +305,7 @@ private struct RuleRow: View {
     let title: String
     let isPattern: Bool
     let port: Int?
+    var portEnd: Int? = nil
     let targets: [BrowserTarget]
     let iconCap: Int
     let number: (BrowserTarget) -> Int?
@@ -321,6 +322,18 @@ private struct RuleRow: View {
     var moveUp: (() -> Void)? = nil
     var moveDown: (() -> Void)? = nil
 
+    private var portHelp: String {
+        guard let port else {
+            return title
+        }
+
+        guard let portEnd else {
+            return "\(title) on port \(String(port))"
+        }
+
+        return "\(title) on ports \(String(port)) to \(String(portEnd))"
+    }
+
     private var titleText: some View {
         HStack(spacing: 4) {
             Text(title)
@@ -329,7 +342,7 @@ private struct RuleRow: View {
                 .truncationMode(.middle)
 
             if let port {
-                Text(":\(String(port))")
+                Text(":\(String(port))" + (portEnd.map { "-\(String($0))" } ?? ""))
                     .font(.body.monospaced())
                     .foregroundStyle(.secondary)
                     .fixedSize()
@@ -355,7 +368,7 @@ private struct RuleRow: View {
                         titleText
                     }
                     .buttonStyle(.plain)
-                    .help(port.map { "\(title) on port \(String($0))" } ?? title)
+                    .help(portHelp)
                     .accessibilityAction(named: "Move Up") { moveUp?() }
                     .accessibilityAction(named: "Move Down") { moveDown?() }
                 } else {
@@ -562,6 +575,7 @@ struct RulesTab: View {
             title: rule.regex,
             isPattern: true,
             port: rule.port,
+            portEnd: rule.portEnd,
             targets: rule.targets,
             iconCap: iconCap,
             number: lookup.number(of:),
@@ -781,8 +795,8 @@ struct RulesTab: View {
             RuleForm(
                 original: nil,
                 onCancel: { addPresented = false },
-                onSave: { regex, port in
-                    let rule = Rule(regex: regex, targets: [], port: port)
+                onSave: { regex, port, portEnd in
+                    let rule = Rule(regex: regex, targets: [], port: port, portEnd: portEnd)
                     rules.insert(rule, at: 0)
                     addPresented = false
 
@@ -798,10 +812,11 @@ struct RulesTab: View {
             RuleForm(
                 original: rule,
                 onCancel: { editing = nil },
-                onSave: { regex, port in
+                onSave: { regex, port, portEnd in
                     update(rule.id) {
                         $0.regex = regex
                         $0.port = port
+                        $0.portEnd = portEnd
                     }
                     editing = nil
                 },

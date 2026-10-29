@@ -18,6 +18,9 @@ struct Rule: Hashable, Codable, Identifiable {
     var targets: [BrowserTarget]
     /// When set, the link's port must match as well as the regex.
     var port: Int? = nil
+    /// When set, port is the first of a range and this the last, both
+    /// included. Older builds ignore it and match only the first port.
+    var portEnd: Int? = nil
     /// Opens the link with the browser's private argument.
     var isIncognito: Bool = false
 
@@ -30,6 +33,7 @@ struct Rule: Hashable, Codable, Identifiable {
         case regex
         case targets
         case port
+        case portEnd
         case isIncognito
     }
 
@@ -51,7 +55,12 @@ struct Rule: Hashable, Codable, Identifiable {
             return true
         }
 
-        return Rule.effectivePort(of: url) == port
+        guard let linkPort = Rule.effectivePort(of: url) else {
+            return false
+        }
+
+        // Compared, not built as a range: a bad range would crash.
+        return port <= linkPort && linkPort <= (portEnd ?? port)
     }
 
     /// Compiling a pattern costs far more than matching it, and the Rules tab
@@ -186,6 +195,14 @@ extension Rule {
         }
 
         port = try container.decodeIfPresent(Int.self, forKey: .port)
+
+        // A range that doesn't run upwards from port, say from a hand-edited
+        // import, keeps the rule on its single port instead.
+        if let port, let end = try container.decodeIfPresent(Int.self, forKey: .portEnd),
+           port < end, end <= 65535 {
+            portEnd = end
+        }
+
         isIncognito = try container.decodeIfPresent(Bool.self, forKey: .isIncognito) ?? false
     }
 
@@ -198,6 +215,7 @@ extension Rule {
         try container.encode(regex, forKey: .regex)
         try container.encode(targets, forKey: .targets)
         try container.encodeIfPresent(port, forKey: .port)
+        try container.encodeIfPresent(portEnd, forKey: .portEnd)
         try container.encode(isIncognito, forKey: .isIncognito)
 
         // Safari as the last resort, because a rule without an app is one an

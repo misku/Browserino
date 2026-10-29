@@ -12,26 +12,65 @@ import SwiftUI
 struct RuleForm: View {
     let original: Rule?
     let onCancel: () -> Void
-    let onSave: (_ regex: String, _ port: Int?) -> Void
+    let onSave: (_ regex: String, _ port: Int?, _ portEnd: Int?) -> Void
     var onDelete: (() -> Void)? = nil
 
     @State private var regex: String = ""
     @AppStorage("ruleTestUrls") private var testUrls: String = "https://github.com/AlexStrNik/Browserino\nhttps://x.com/alexstrnik"
     @State private var portText: String = ""
+    @State private var isRange = false
+    /// Kept while the range is off, so turning it back on restores it.
+    @State private var portEndText: String = ""
     @State private var confirmDelete = false
     @State private var isLoaded = false
 
+    private static func trimmed(_ text: String) -> String {
+        text.trimmingCharacters(in: .whitespaces)
+    }
+
     /// nil while the field is empty or not a valid port.
-    private var parsedPort: Int? {
-        let trimmed = portText.trimmingCharacters(in: .whitespaces)
-        guard let value = Int(trimmed), (1...65535).contains(value) else {
+    private static func parse(_ text: String) -> Int? {
+        guard let value = Int(trimmed(text)), (1...65535).contains(value) else {
             return nil
         }
         return value
     }
 
+    private var parsedPort: Int? {
+        RuleForm.parse(portText)
+    }
+
+    /// The last port as saved: nil without a range, or when both ends are
+    /// the same port.
+    private var parsedPortEnd: Int? {
+        guard isRange, let port = parsedPort, let end = RuleForm.parse(portEndText), end > port else {
+            return nil
+        }
+        return end
+    }
+
+    /// Why the port line can't be saved, or nil when it can.
+    private var portError: String? {
+        let start = RuleForm.trimmed(portText)
+        let end = RuleForm.trimmed(portEndText)
+
+        if (!start.isEmpty && parsedPort == nil) || (isRange && !end.isEmpty && RuleForm.parse(end) == nil) {
+            return "A port is a number from 1 to 65535."
+        }
+
+        guard isRange else {
+            return nil
+        }
+
+        guard let port = parsedPort, let last = RuleForm.parse(end) else {
+            return "Enter both ports for a range."
+        }
+
+        return port > last ? "The first port must not be larger than the last." : nil
+    }
+
     private var portIsValid: Bool {
-        portText.trimmingCharacters(in: .whitespaces).isEmpty || parsedPort != nil
+        portError == nil
     }
 
     /// A space before or after a pattern is invisible in the field and would
@@ -50,7 +89,7 @@ struct RuleForm: View {
 
     /// Each test link and whether this rule, port included, would take it.
     private var testResults: [(link: String, matches: Bool)] {
-        let rule = Rule(regex: pattern, targets: [], port: parsedPort)
+        let rule = Rule(regex: pattern, targets: [], port: parsedPort, portEnd: parsedPortEnd)
 
         return testUrls
             .split(separator: "\n")
@@ -79,15 +118,37 @@ struct RuleForm: View {
                     }
 
                     LabeledContent("Port") {
-                        TextField("Port", text: $portText, prompt: Text("Any"))
-                            .labelsHidden()
-                            .font(.body.monospaced())
-                            .multilineTextAlignment(.trailing)
-                            .frame(width: 80)
+                        HStack(spacing: 8) {
+                            TextField("First port", text: $portText, prompt: Text(isRange ? "From" : "Any"))
+                                .labelsHidden()
+                                .font(.body.monospaced())
+                                .multilineTextAlignment(.trailing)
+                                .frame(width: 80)
+
+                            Toggle("Port range", isOn: $isRange)
+                                .toggleStyle(.checkbox)
+                                .labelsHidden()
+
+                            Text("to")
+                                .foregroundStyle(isRange ? .primary : .tertiary)
+                                .accessibilityHidden(true)
+
+                            TextField("Last port", text: $portEndText, prompt: Text("To"))
+                                .labelsHidden()
+                                .font(.body.monospaced())
+                                .multilineTextAlignment(.trailing)
+                                .frame(width: 80)
+                                .disabled(!isRange)
+                        }
+                    }
+                    .onChange(of: isRange) { _, isOn in
+                        if isOn && RuleForm.trimmed(portEndText).isEmpty {
+                            portEndText = portText
+                        }
                     }
 
-                    if !portIsValid {
-                        Label("A port is a number from 1 to 65535.", systemImage: "exclamationmark.triangle.fill")
+                    if let portError {
+                        Label(portError, systemImage: "exclamationmark.triangle.fill")
                             .font(.callout)
                             .foregroundStyle(.red)
                     }
@@ -95,7 +156,7 @@ struct RuleForm: View {
                     Text(original == nil ? "New Rule" : "Edit Rule")
                         .font(.headline)
                 } footer: {
-                    Text("A regular expression matched anywhere in the full link, ignoring case. Leave the port empty for any port; links without one count as 80 for http and 443 for https.")
+                    Text("A regular expression matched anywhere in the full link, ignoring case. Leave the port empty for any port; links without one count as 80 for http and 443 for https. Tick \"to\" to match every port from the first to the last, both included.")
                         .font(.callout)
                         .foregroundStyle(.secondary)
                 }
@@ -147,7 +208,7 @@ struct RuleForm: View {
                         return
                     }
 
-                    onSave(pattern, parsedPort)
+                    onSave(pattern, parsedPort, parsedPortEnd)
                 }
                 .keyboardShortcut(.defaultAction)
                 .disabled(!canSave)
@@ -172,6 +233,11 @@ struct RuleForm: View {
             isLoaded = true
             regex = original?.regex ?? ""
             portText = original?.port.map(String.init) ?? ""
+
+            if let end = original?.portEnd {
+                portEndText = String(end)
+                isRange = true
+            }
         }
     }
 }
