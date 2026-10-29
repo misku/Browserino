@@ -117,8 +117,13 @@ struct RuleForm: View {
                             .foregroundStyle(.red)
                     }
 
-                    LabeledContent("Port") {
+                    LabeledContent(isRange ? "Port range" : "Port") {
                         HStack(spacing: 8) {
+                            if isRange {
+                                Text("from")
+                                    .accessibilityHidden(true)
+                            }
+
                             TextField("First port", text: $portText, prompt: Text(isRange ? "From" : "Any"))
                                 .labelsHidden()
                                 .font(.body.monospaced())
